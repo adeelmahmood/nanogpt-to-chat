@@ -1,0 +1,19 @@
+
+# common git ignore files for python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# distribution / packaging
+.Python
+build/
+
+# environment
+env/
+venv/
+.env/
+
+# checkpoints
+ckps
+
+files

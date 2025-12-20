@@ -1,0 +1,53 @@
+from dataclasses import dataclass
+from gpt import GPTConfig, GPTModel
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
+import tiktoken
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+tokenizer = tiktoken.get_encoding("gpt2")
+
+# Load checkpoint
+checkpoint = torch.load("./ckps/fw_model_19072.pt", map_location=device, weights_only=False)
+
+# --- FIX: strip `_orig_mod.` keys if present ---
+state = checkpoint["model_state_dict"]
+# fixed_state = {}
+
+# for k, v in state.items():
+#     if k.startswith("_orig_mod."):
+#         fixed_state[k.replace("_orig_mod.", "", 1)] = v
+#     else:
+#         fixed_state[k] = v
+
+# Initialize model
+model = GPTModel(GPTConfig(vocab_size=50304))
+model.load_state_dict(state, strict=True)
+model.to(device)
+model.eval()
+
+print("Model loaded for inference")
+
+# torch.manual_seed(42)
+# torch.cuda.manual_seed_all(42)
+
+# Generate text
+text = "Once upon a time in a land far, far away, there lived a"
+print(text, end="", flush=True)
+idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
+token_ids = model.generate(idx, max_tokens=128, print_as_you_go=True).squeeze(0).tolist()
+
+# print(tokenizer.decode(token_ids))
+
+
+
+# step: 19068 | loss: 3.0779 | lr 6.0000e-05 | norm 0.2802 | time: 358.64ms | tok-sec: 1461880.33
+# step: 19069 | loss: 3.0880 | lr 6.0000e-05 | norm 0.2880 | time: 359.01ms | tok-sec: 1460383.29
+# step: 19070 | loss: 3.0448 | lr 6.0000e-05 | norm 0.2921 | time: 359.05ms | tok-sec: 1460215.53
+# step: 19071 | loss: 3.0554 | lr 6.0000e-05 | norm 0.2876 | time: 358.64ms | tok-sec: 1461882.28
+# Validation loss: 3.0655
+# Checkpoint saved at ./ckps/fw_model_19072.pt
+# Checkpoint saved at step 19072
+# step: 19072 | loss: 3.0833 | lr 6.0000e-05 | norm 0.3028 | time: 3540.07ms | tok-sec: 148100.82

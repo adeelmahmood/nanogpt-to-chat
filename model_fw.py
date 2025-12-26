@@ -1,15 +1,11 @@
 from dataloader import DataLoaderLite
-from gptmodel import GPTConfig, GPTModel, configure_optimizer
+from gpt import GPTConfig, GPTModel, configure_optimizer
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
 import time
 
 from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
-from contextlib import nullcontext
 import tiktoken
 
 import os
@@ -50,7 +46,7 @@ torch.set_float32_matmul_precision('high')
 # initialize the model
 model = GPTModel(GPTConfig(vocab_size=50304)) 
 model = model.to(device)
-model = torch.compile(model)
+# model = torch.compile(model)
 
 # wrap the model in ddp
 if ddp:
@@ -66,7 +62,7 @@ if master_process:
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 warmup_steps = 715
-max_steps = 19073 # 10B / 524288
+max_steps = 5 # 19073 # 10B / 524288
 
 
 # Training Loop
@@ -76,9 +72,9 @@ torch.manual_seed(1337 + ddp_rank)
 torch.cuda.manual_seed(1337 + ddp_rank)
 
 # Batch parameters
-total_batch_size = 524288
-B = 32
+B = 4
 T = 1024
+total_batch_size = B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
 if master_process:
   print(f"B = {B}, T = {T}")
@@ -86,8 +82,8 @@ if master_process:
   print(f"Total batch size: {total_batch_size}")
 
 # data loader
-train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train", data_root="edu_fineweb10B", master_process=master_process)
-val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root="edu_fineweb10B", master_process=master_process)
+train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train", data_root="files/tinysk", master_process=master_process)
+val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root="files/tinysk", master_process=master_process)
 
 for i in range(max_steps):
   st = time.time()

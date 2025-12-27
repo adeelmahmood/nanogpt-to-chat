@@ -13,6 +13,7 @@ class GPTConfig:
   vocab_size: int = 50257 # 50304
   n_layer: int = 12
   n_head: int = 12
+  n_kv_head: int = 12 // 4
   n_emb: int = 768
 
 
@@ -38,7 +39,6 @@ def rope_cache(seq_len, head_dim, base: int = 10000):
 
 
 def rope_apply(x, cos, sin):
-  print(f"apply rope x shape: {x.shape}")
   # x: (B, nH, T, Hs)
   B, H, T, Hs = x.shape
   half = Hs // 2
@@ -56,17 +56,10 @@ def rope_apply(x, cos, sin):
   return torch.cat([rotated_x1, rotated_x2], dim=-1)
   
 
+def norm(x):
+    # Purely functional rmsnorm with no learnable params
+    return F.rms_norm(x, (x.size(-1),))
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-8):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x):
-        # Compute rms over last dimension
-        rms = x.pow(2).mean(-1, keepdim=True).sqrt()
-        return x / (rms + self.eps) * self.weight
 
 
 class MLP(nn.Module):
@@ -75,13 +68,12 @@ class MLP(nn.Module):
     self.config = config
 
     self.c_fc = nn.Linear(config.n_emb, 4 * config.n_emb)
-    self.gelu = nn.GELU(approximate='tanh')
     self.c_proj = nn.Linear(4 * config.n_emb, config.n_emb)
     self.c_proj.residual_proj = True
 
   def forward(self, x):
     x = self.c_fc(x)
-    x = self.gelu(x)
+    x = F.relu(x).square()
     x = self.c_proj(x)
     return x
 
@@ -92,34 +84,43 @@ class CausalSelfAttention(nn.Module):
     self.config = config
     self.n_head = config.n_head
     self.n_emb = config.n_emb
-      
-    self.c_attn = nn.Linear(config.n_emb, 3 * config.n_emb)
+    self.n_kv_head = config.n_kv_head
+
+    self.head_dim = config.n_emb // config.n_head
+
+    self.c_q = nn.Linear(config.n_emb, config.n_head * self.head_dim, bias=False)
+    self.c_k = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
+    self.c_v = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
+    
     self.c_proj = nn.Linear(config.n_emb, config.n_emb)
     self.c_proj.residual_proj = True
-    # self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)).view(1, 1, config.block_size, config.block_size))
-
+    
   def forward(self, x, cos_sin):
     B, T, C = x.shape
 
-    q, k, v = self.c_attn(x).split(self.n_emb, dim=2)
-    q = q.view(B, T, self.n_head, C//self.n_head).transpose(1, 2) # B, nH, T, Hs
-    k = k.view(B, T, self.n_head, C//self.n_head).transpose(1, 2) # B, nH, T, Hs
-    v = v.view(B, T, self.n_head, C//self.n_head).transpose(1, 2) # B, nH, T, Hs
+    # project Q, K, V
+    q = self.c_q(x).view(B, T, self.n_head, self.head_dim) # B, nH, Hs, T
+    k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+    v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+
+    # qk norm
+    q = norm(q)
+    k = norm(k)
+
+    q = q.transpose(1, 2) # B, nH, T, Hs
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
 
     # rope 
-    cos, sin = cos_sin[0], cos_sin[1]
+    cos, sin = cos_sin
     q = rope_apply(q, cos, sin)
     k = rope_apply(k, cos, sin)
 
-    # scores = (q @ k.transpose(-2, -1)) / k.size(-1)**0.5 # B, nH, T, T
-    # scores = scores.masked_fill(self.tril[:, :, :T, :T] == 0, float('-inf'))
-    # weights = F.softmax(scores, dim=-1)
-    # context = weights @ v # B, nH, T, Hs
-    context = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-    context = context.transpose(1, 2).contiguous().view(B, T, C)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True)
+    y = y.transpose(1, 2).contiguous().view(B, T, C)
 
-    context = self.c_proj(context)
-    return context
+    y = self.c_proj(y)
+    return y
 
 
 class Block(nn.Module):
@@ -127,14 +128,12 @@ class Block(nn.Module):
     super().__init__()
     self.config = config
 
-    self.ln_1 = RMSNorm(config.n_emb)
     self.attn = CausalSelfAttention(config)
-    self.ln_2 = RMSNorm(config.n_emb)
     self.mlp = MLP(config)
 
   def forward(self, x, cos_sin):
-    x = x + self.attn(self.ln_1(x), cos_sin)
-    x = x + self.mlp(self.ln_2(x))
+    x = x + self.attn(norm(x), cos_sin)
+    x = x + self.mlp(norm(x))
     return x
 
 
@@ -151,9 +150,7 @@ class GPTModel(nn.Module):
 
     self.transformer = nn.ModuleDict(dict(
         wte = nn.Embedding(config.vocab_size, config.n_emb),
-        # wpe = nn.Embedding(config.block_size, config.n_emb),
         h = nn.ModuleList(Block(config) for _ in range(config.n_layer)),
-        ln_f = RMSNorm(config.n_emb),
     ))
 
     self.lm_head = nn.Linear(config.n_emb, config.vocab_size, bias=False)
@@ -180,12 +177,11 @@ class GPTModel(nn.Module):
     B, T = idx.shape
     cos_sin = self.cos, self.sin
 
-    tok_emb = self.transformer.wte(idx) # B, T, C (n_emb)
-    # pos_emb = self.transformer.wpe(torch.arange(0, T, dtype=torch.long, device=idx.device)) # T, C
-    x = tok_emb # + pos_emb # B, T, C
+    x = self.transformer.wte(idx) # B, T, C (n_emb)
+    x = norm(x)
     for block in self.transformer.h: # B, T, C
       x = block(x, cos_sin)
-    x = self.transformer.ln_f(x)
+    x = norm(x)
     logits = self.lm_head(x) # B, T, C (vocab_size)
 
     loss = None

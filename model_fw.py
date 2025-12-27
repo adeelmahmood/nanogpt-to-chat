@@ -110,7 +110,7 @@ for i in range(max_steps):
       print(f"Validation loss: {val_loss_accum.item():.4f}")
   
   # save checkpoint
-  if i > 0 and (i % 5000 == 0 or last_step) and master_process:
+  if i > 0 and (i % 5000 == 0 or last_step) and master_process and False:
     save_checkpoint(
         f"./ckps/fw_model_{i:05d}.pt",
         raw_model._orig_mod if hasattr(raw_model, "_orig_mod") else raw_model,

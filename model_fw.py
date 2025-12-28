@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from dataloader import DataLoaderLite
 from gpt import GPTConfig, GPTModel, configure_optimizer
+from logger import MetricLogger
 import torch
 import time
 
@@ -12,6 +14,19 @@ import os
 
 from utils import get_lr, save_checkpoint
 
+import argparse
+from experiments import EXPERIMENTS
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--exp', type=str, choices=EXPERIMENTS.keys(), default="baseline", help='Name of the experiment to run')
+args = parser.parse_args()
+
+# set up logger
+exp_config = EXPERIMENTS[args.exp]
+logger = MetricLogger("runs", exp_name=exp_config.name)
+
+# distributed data parallel setup
 ddp = int(os.environ.get("RANK", -1)) != -1
 if ddp:
   init_process_group(backend='nccl')
@@ -38,13 +53,17 @@ device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
 if master_process:
   print(f"using device: {device} type {device_type}")
 
+# set seeds
+torch.manual_seed(1337 + ddp_rank)
+torch.cuda.manual_seed(1337 + ddp_rank)
+
 # define the tokenizer
 tokenizer = tiktoken.get_encoding("gpt2")
 
 torch.set_float32_matmul_precision('high')
 
 # initialize the model
-model = GPTModel(GPTConfig(vocab_size=50304)) 
+model = GPTModel(GPTConfig(vocab_size=50304, use_rope=exp_config.use_rope, use_rmsnorm=exp_config.use_rmsnorm, use_qk_norm=exp_config.use_qk_norm, use_gqa=exp_config.use_gqa)) 
 model = model.to(device)
 # model = torch.compile(model)
 
@@ -61,20 +80,17 @@ if master_process:
 
 max_lr = 6e-4
 min_lr = max_lr * 0.1
-warmup_steps = 715
-max_steps = 5 # 19073 # 10B / 524288
+warmup_steps = 30
+max_steps = 700 # 19073 # 10B / 524288
 
 
 # Training Loop
 ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) # if use_bf16 else nullcontext()
 
-torch.manual_seed(1337 + ddp_rank)
-torch.cuda.manual_seed(1337 + ddp_rank)
-
 # Batch parameters
-B = 4
-T = 1024
-total_batch_size = B*T # 524288
+B = 8
+T = 512
+total_batch_size = 1*B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
 if master_process:
   print(f"B = {B}, T = {T}")
@@ -170,6 +186,14 @@ for i in range(max_steps):
   # if i % (max_iter*0.1) == 0 or i == max_iter-1:
   if master_process:
     print(f"step: {i} | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f}")
+    logger.log(
+        step=i,
+        train_loss=loss_accum.item(),
+        grad_norm=norm.item(),
+        lr=lr,
+        tok_per_sec=tok_sec
+    )
+
 
 
 if ddp:

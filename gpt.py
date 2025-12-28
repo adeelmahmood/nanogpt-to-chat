@@ -16,6 +16,12 @@ class GPTConfig:
   n_kv_head: int = 12 // 4
   n_emb: int = 768
 
+  # ablation toggles
+  use_rope: bool = True
+  use_rmsnorm: bool = True
+  use_qk_norm: bool = False
+  use_gqa: bool = False
+
 
 def rope_cache(seq_len, head_dim, base: int = 10000):
   assert head_dim % 2 == 0
@@ -56,10 +62,12 @@ def rope_apply(x, cos, sin):
   return torch.cat([rotated_x1, rotated_x2], dim=-1)
   
 
-def norm(x):
+def norm(x, use_rms=True):
     # Purely functional rmsnorm with no learnable params
-    return F.rms_norm(x, (x.size(-1),))
-
+    if use_rms:
+      return F.rms_norm(x, (x.size(-1),))
+    else:
+      return F.layer_norm(x, (x.size(-1),))
 
 
 class MLP(nn.Module):
@@ -88,9 +96,12 @@ class CausalSelfAttention(nn.Module):
 
     self.head_dim = config.n_emb // config.n_head
 
-    self.c_q = nn.Linear(config.n_emb, config.n_head * self.head_dim, bias=False)
-    self.c_k = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
-    self.c_v = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
+    if not self.config.use_gqa:
+      self.c_attn = nn.Linear(config.n_emb, 3 * config.n_emb)
+    else:
+      self.c_q = nn.Linear(config.n_emb, config.n_head * self.head_dim, bias=False)
+      self.c_k = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
+      self.c_v = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
     
     self.c_proj = nn.Linear(config.n_emb, config.n_emb)
     self.c_proj.residual_proj = True
@@ -99,24 +110,33 @@ class CausalSelfAttention(nn.Module):
     B, T, C = x.shape
 
     # project Q, K, V
-    q = self.c_q(x).view(B, T, self.n_head, self.head_dim) # B, nH, Hs, T
-    k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
-    v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    if not self.config.use_gqa:
+      qkv = self.c_attn(x) # B, T, 3*C
+      q, k, v = qkv.split(self.n_emb, dim=2)
+      q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2) # B, nH, T, Hs
+      k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+      v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+    else:
+      q = self.c_q(x).view(B, T, self.n_head, self.head_dim) # B, nH, Hs, T
+      k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+      v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
 
     # qk norm
-    q = norm(q)
-    k = norm(k)
+    if self.config.use_qk_norm:
+      q = norm(q, use_rms=self.config.use_rmsnorm)
+      k = norm(k, use_rms=self.config.use_rmsnorm)
 
     q = q.transpose(1, 2) # B, nH, T, Hs
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
 
     # rope 
-    cos, sin = cos_sin
-    q = rope_apply(q, cos, sin)
-    k = rope_apply(k, cos, sin)
+    if self.config.use_rope:
+      cos, sin = cos_sin
+      q = rope_apply(q, cos, sin)
+      k = rope_apply(k, cos, sin)
 
-    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=self.config.use_gqa)
     y = y.transpose(1, 2).contiguous().view(B, T, C)
 
     y = self.c_proj(y)
@@ -132,8 +152,8 @@ class Block(nn.Module):
     self.mlp = MLP(config)
 
   def forward(self, x, cos_sin):
-    x = x + self.attn(norm(x), cos_sin)
-    x = x + self.mlp(norm(x))
+    x = x + self.attn(norm(x, use_rms=self.config.use_rmsnorm), cos_sin)
+    x = x + self.mlp(norm(x, use_rms=self.config.use_rmsnorm))
     return x
 
 
@@ -144,9 +164,12 @@ class GPTModel(nn.Module):
     self.tokenizer = tiktoken.get_encoding("gpt2")
 
     # precompute rope cache
-    cos, sin = rope_cache(config.block_size, config.n_emb // config.n_head)
-    self.register_buffer('cos', cos, persistent=False)
-    self.register_buffer('sin', sin, persistent=False)
+    if config.use_rope:
+      cos, sin = rope_cache(config.block_size, config.n_emb // config.n_head)
+      self.register_buffer('cos', cos, persistent=False)
+      self.register_buffer('sin', sin, persistent=False)
+    else:
+      self.cos = self.sin = None
 
     self.transformer = nn.ModuleDict(dict(
         wte = nn.Embedding(config.vocab_size, config.n_emb),
@@ -178,10 +201,10 @@ class GPTModel(nn.Module):
     cos_sin = self.cos, self.sin
 
     x = self.transformer.wte(idx) # B, T, C (n_emb)
-    x = norm(x)
+    x = norm(x, use_rms=self.config.use_rmsnorm)
     for block in self.transformer.h: # B, T, C
       x = block(x, cos_sin)
-    x = norm(x)
+    x = norm(x, use_rms=self.config.use_rmsnorm)
     logits = self.lm_head(x) # B, T, C (vocab_size)
 
     loss = None

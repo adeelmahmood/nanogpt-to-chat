@@ -16,11 +16,11 @@ class GPTConfig:
   n_kv_head: int = 12 // 4
   n_emb: int = 768
 
-  # ablation toggles
   use_rope: bool = True
   use_rmsnorm: bool = True
-  use_qk_norm: bool = False
-  use_gqa: bool = False
+  use_qk_norm: bool = True
+  use_gqa: bool = True
+  use_kv_cache: bool = True
 
 
 def rope_cache(seq_len, head_dim, base: int = 10000):
@@ -44,7 +44,7 @@ def rope_cache(seq_len, head_dim, base: int = 10000):
   return cos, sin
 
 
-def rope_apply(x, cos, sin):
+def rope_apply(x, cos, sin, offset = 0):
   # x: (B, nH, T, Hs)
   B, H, T, Hs = x.shape
   half = Hs // 2
@@ -53,8 +53,8 @@ def rope_apply(x, cos, sin):
   x2 = x[..., half:]
 
   # cos, sin are (1, 1, seq_len, half_dim), slice to match T
-  cos = cos[:, :, :T, :]  # (1, 1, T, half_dim)
-  sin = sin[:, :, :T, :]  # (1, 1, T, half_dim)
+  cos = cos[:, :, offset:offset+T, :]  # (1, 1, T, half_dim)
+  sin = sin[:, :, offset:offset+T, :]  # (1, 1, T, half_dim)
 
   rotated_x1 = x1 * cos - x2 * sin
   rotated_x2 = x1 * sin + x2 * cos
@@ -68,6 +68,31 @@ def norm(x, use_rms=True):
       return F.rms_norm(x, (x.size(-1),))
     else:
       return F.layer_norm(x, (x.size(-1),))
+
+
+class KVCache:
+  def __init__(self, n_layers):
+    self.n_layers = n_layers
+    self.k = [None] * n_layers
+    self.v = [None] * n_layers
+
+  def seq_len(self):
+    for kk in self.k:
+      if kk is not None:
+        return kk.size(-2)
+    return 0
+  
+  def get(self, layer_idx):
+    return self.k[layer_idx], self.v[layer_idx]
+  
+  def append(self, layer_idx, k, v):
+    if self.k[layer_idx] is None:
+      self.k[layer_idx] = k
+      self.v[layer_idx] = v
+    else:
+      self.k[layer_idx] = torch.cat([self.k[layer_idx], k], dim=-2)
+      self.v[layer_idx] = torch.cat([self.v[layer_idx], v], dim=-2)
+
 
 
 class MLP(nn.Module):
@@ -106,37 +131,44 @@ class CausalSelfAttention(nn.Module):
     self.c_proj = nn.Linear(config.n_emb, config.n_emb)
     self.c_proj.residual_proj = True
     
-  def forward(self, x, cos_sin):
+  def forward(self, x, cos_sin, kv_cache: KVCache|None = None, layer_idx = 0):
     B, T, C = x.shape
+    past_len = kv_cache.seq_len() if kv_cache is not None else 0
 
     # project Q, K, V
     if not self.config.use_gqa:
       qkv = self.c_attn(x) # B, T, 3*C
       q, k, v = qkv.split(self.n_emb, dim=2)
       q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2) # B, nH, T, Hs
-      k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
-      v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+      k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2) # B, nH, T, Hs
+      v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2) # B, nH, T, Hs
     else:
-      q = self.c_q(x).view(B, T, self.n_head, self.head_dim) # B, nH, Hs, T
-      k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
-      v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+      q = self.c_q(x).view(B, T, self.n_head, self.head_dim).transpose(1, 2) # B, nH, T, Hs
+      k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim).transpose(1, 2) # B, n_kvH, T, Hs
+      v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim).transpose(1, 2) # B, n_kvH, T, Hs
 
     # qk norm
     if self.config.use_qk_norm:
       q = norm(q, use_rms=self.config.use_rmsnorm)
       k = norm(k, use_rms=self.config.use_rmsnorm)
 
-    q = q.transpose(1, 2) # B, nH, T, Hs
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
-
     # rope 
     if self.config.use_rope:
       cos, sin = cos_sin
-      q = rope_apply(q, cos, sin)
-      k = rope_apply(k, cos, sin)
+      q = rope_apply(q, cos, sin, offset=past_len)
+      k = rope_apply(k, cos, sin, offset=past_len)
 
-    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=self.config.use_gqa)
+    k_full, v_full = k, v
+    if kv_cache is not None:
+      k_past, v_past = kv_cache.get(layer_idx)
+      kv_cache.append(layer_idx, k, v)
+
+      if k_past is not None:
+        k_full = torch.cat([k_past, k], dim=-2)
+        v_full = torch.cat([v_past, v], dim=-2)
+
+
+    y = F.scaled_dot_product_attention(q, k_full, v_full, is_causal=True, enable_gqa=self.config.use_gqa)
     y = y.transpose(1, 2).contiguous().view(B, T, C)
 
     y = self.c_proj(y)
@@ -151,8 +183,8 @@ class Block(nn.Module):
     self.attn = CausalSelfAttention(config)
     self.mlp = MLP(config)
 
-  def forward(self, x, cos_sin):
-    x = x + self.attn(norm(x, use_rms=self.config.use_rmsnorm), cos_sin)
+  def forward(self, x, cos_sin, kv_cache=None, layer_idx=0):
+    x = x + self.attn(norm(x, use_rms=self.config.use_rmsnorm), cos_sin, kv_cache=kv_cache, layer_idx=layer_idx)
     x = x + self.mlp(norm(x, use_rms=self.config.use_rmsnorm))
     return x
 
@@ -173,6 +205,7 @@ class GPTModel(nn.Module):
 
     self.transformer = nn.ModuleDict(dict(
         wte = nn.Embedding(config.vocab_size, config.n_emb),
+        wpe = nn.Embedding(config.block_size, config.n_emb) if not config.use_rope else None,
         h = nn.ModuleList(Block(config) for _ in range(config.n_layer)),
     ))
 
@@ -196,14 +229,20 @@ class GPTModel(nn.Module):
     if isinstance(module, nn.Linear) and hasattr(module, "residual_proj"):
         torch.nn.init.normal_(module.weight, mean=0.0, std=0.02 / math.sqrt(2 * self.config.n_layer))
 
-  def forward(self, idx, targets=None):
+  def forward(self, idx, targets=None, kv_cache=None):
     B, T = idx.shape
     cos_sin = self.cos, self.sin
 
     x = self.transformer.wte(idx) # B, T, C (n_emb)
+    if self.config.use_rope is False:
+      positions = torch.arange(0, T, dtype=torch.long, device=idx.device)
+      x = x + self.transformer.wpe(positions) # B, T, C
+
     x = norm(x, use_rms=self.config.use_rmsnorm)
-    for block in self.transformer.h: # B, T, C
-      x = block(x, cos_sin)
+    
+    for layer_idx, block in enumerate(self.transformer.h): # B, T, C
+      x = block(x, cos_sin, kv_cache=kv_cache, layer_idx=layer_idx)
+
     x = norm(x, use_rms=self.config.use_rmsnorm)
     logits = self.lm_head(x) # B, T, C (vocab_size)
 
@@ -213,22 +252,56 @@ class GPTModel(nn.Module):
 
     return logits, loss
 
-  @torch.no_grad()
-  def generate(self, idx, max_tokens, temperature=1.0, top_k=50, print_as_you_go=False):
+  @torch.inference_mode()
+  def generate(self, idx, max_tokens, temperature=1.0, top_k=50, print_as_you_go=False, use_kv_cache=True):
+    B, T = idx.shape
+
+    # enforce block_size limit for ROPE 
+    if T > self.config.block_size:
+      idx = idx[:, -self.config.block_size:]
+      T = idx.size(1)
+
+    kv_cache = KVCache(self.config.n_layer) if use_kv_cache else None
+
+    # prefill cache by running tokens through once
+    logits, _ = self(idx, kv_cache=kv_cache)
+    next_logits = logits[:, -1, :]
+
     for _ in range(max_tokens):
-      idx_trim = idx if idx.size(-1) < self.config.block_size else idx[:, -self.config.block_size:]
-      logits,_ = self(idx_trim)
-      logits = logits[:, -1, :]
-      probs = F.softmax(logits / temperature, dim=-1)
-      topk_probs, topk_indices = torch.topk(probs, top_k, dim=-1)
-      ix = torch.multinomial(topk_probs, 1)
-      xcol = torch.gather(topk_indices, -1, ix)
+      probs = F.softmax(next_logits / temperature, dim=-1)
+
+      if top_k is not None:
+        topk_probs, topk_indices = torch.topk(probs, top_k, dim=-1)
+        ix = torch.multinomial(topk_probs, 1)
+        xcol = torch.gather(topk_indices, -1, ix)
+      else:
+        xcol = torch.multinomial(probs, 1)
+      
+      # append new token to sequence
       idx = torch.cat((idx, xcol), dim=1)
 
       if print_as_you_go:
         token_id = xcol.item()
         token_str = self.tokenizer.decode([token_id])
         print(token_str, end="", flush=True)
+
+
+      if use_kv_cache:
+        # ROPE block size safety (we have pre-computed fixed angles)
+        if kv_cache.seq_len() >= self.config.block_size:
+          raise RuntimeError("Exceeded RoPE window during generation")
+        
+        # feed only the new token
+        logits, _ = self(xcol, kv_cache=kv_cache)
+        next_logits = logits[:, -1, :]
+
+      else:
+        if idx.size(1) > self.config.block_size:
+          idx = idx[:, -self.config.block_size:]
+        
+        logits, _ = self(idx)
+        next_logits = logits[:, -1, :]
+
     return idx
 
 

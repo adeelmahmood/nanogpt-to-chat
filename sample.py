@@ -6,7 +6,11 @@ import torch.nn.functional as F
 import math
 import tiktoken
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu"
+if torch.cuda.is_available():
+    device = "cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = "mps"
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
@@ -24,20 +28,20 @@ state = checkpoint["model_state_dict"]
 
 # Initialize model
 model = GPTModel(GPTConfig(vocab_size=50304))
-model.load_state_dict(state, strict=True)
+# model.load_state_dict(state, strict=True)
 model.to(device)
 model.eval()
 
 print("Model loaded for inference")
 
-# torch.manual_seed(42)
-# torch.cuda.manual_seed_all(42)
+torch.manual_seed(1337)
+torch.cuda.manual_seed_all(1337)
 
 # Generate text
 text = "Once upon a time in a land far, far away, there lived a"
 print(text, end="", flush=True)
 idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
-token_ids = model.generate(idx, max_tokens=128, print_as_you_go=True).squeeze(0).tolist()
+token_ids = model.generate(idx, max_tokens=500, print_as_you_go=True, use_kv_cache=True).squeeze(0).tolist()
 
 # print(tokenizer.decode(token_ids))
 

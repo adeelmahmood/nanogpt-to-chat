@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from chat import decode_with_special_tokens
+from engine import Engine, Sampler
 from gpt import GPTConfig, GPTModel
 import torch
 import torch.nn as nn
@@ -14,34 +16,39 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-checkpoint = torch.load("./ckps/fw_model_19072.pt", map_location=device, weights_only=False)
+checkpoint = torch.load("./ckps/localmodel/midtrain_model_01999.pt", map_location=device, weights_only=False)
 
 # --- FIX: strip `_orig_mod.` keys if present ---
 state = checkpoint["model_state_dict"]
-# fixed_state = {}
+fixed_state = {}
 
-# for k, v in state.items():
-#     if k.startswith("_orig_mod."):
-#         fixed_state[k.replace("_orig_mod.", "", 1)] = v
-#     else:
-#         fixed_state[k] = v
+for k, v in state.items():
+    if k.startswith("_orig_mod."):
+        fixed_state[k.replace("_orig_mod.", "", 1)] = v
+    else:
+        fixed_state[k] = v
 
 # Initialize model
 model = GPTModel(GPTConfig(vocab_size=50304))
-# model.load_state_dict(state, strict=True)
+model.load_state_dict(fixed_state, strict=True)
 model.to(device)
 model.eval()
 
 print("Model loaded for inference")
 
-torch.manual_seed(1337)
-torch.cuda.manual_seed_all(1337)
+torch.manual_seed(1)
+torch.cuda.manual_seed(1)
 
-# Generate text
-text = "Once upon a time in a land far, far away, there lived a"
-print(text, end="", flush=True)
+
+# generate
+sampler = Sampler(temperature=1.0, top_k=50)
+engine = Engine(model, sampler, use_kv_cache=True)
+
+text = "Who is Max?"
 idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
-token_ids = model.generate(idx, max_tokens=500, print_as_you_go=True, use_kv_cache=True).squeeze(0).tolist()
+
+token_ids, state = engine.generate(idx, max_new_tokens=50)
+print(decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer))
 
 # print(tokenizer.decode(token_ids))
 
@@ -55,3 +62,4 @@ token_ids = model.generate(idx, max_tokens=500, print_as_you_go=True, use_kv_cac
 # Checkpoint saved at ./ckps/fw_model_19072.pt
 # Checkpoint saved at step 19072
 # step: 19072 | loss: 3.0833 | lr 6.0000e-05 | norm 0.3028 | time: 3540.07ms | tok-sec: 148100.82
+

@@ -38,4 +38,11 @@ EXPERIMENTS = {
         use_gqa=True,
         use_qk_norm=True,
     ),
+    "latest": ExperimentConfig(
+        name="latest",
+        use_rope=True,
+        use_rmsnorm=True,
+        use_gqa=True,
+        use_qk_norm=True,
+    ),
 }

@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from dataloader import DataLoaderLite
 from gpt import GPTConfig, GPTModel, configure_optimizer
 from logger import MetricLogger
@@ -19,7 +18,7 @@ from experiments import EXPERIMENTS
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exp', type=str, choices=EXPERIMENTS.keys(), default="baseline", help='Name of the experiment to run')
+parser.add_argument('--exp', type=str, choices=EXPERIMENTS.keys(), default="latest", help='Name of the experiment to run')
 args = parser.parse_args()
 
 # set up logger
@@ -35,7 +34,7 @@ if ddp:
   ddp_world_size = int(os.environ["WORLD_SIZE"])
   device = f"cuda:{ddp_local_rank}"
   torch.cuda.set_device(device)
-  master_process = ddp_local_rank == 0
+  master_process = ddp_rank == 0
 else:
   ddp_rank = 0
   ddp_local_rank = 0
@@ -63,14 +62,15 @@ tokenizer = tiktoken.get_encoding("gpt2")
 torch.set_float32_matmul_precision('high')
 
 # initialize the model
-model = GPTModel(GPTConfig(vocab_size=50304, use_rope=exp_config.use_rope, use_rmsnorm=exp_config.use_rmsnorm, use_qk_norm=exp_config.use_qk_norm, use_gqa=exp_config.use_gqa)) 
+# model = GPTModel(GPTConfig(vocab_size=50304, use_rope=exp_config.use_rope, use_rmsnorm=exp_config.use_rmsnorm, use_qk_norm=exp_config.use_qk_norm, use_gqa=exp_config.use_gqa)) 
+model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
-# model = torch.compile(model)
+raw_model = model
+model = torch.compile(model)
 
 # wrap the model in ddp
 if ddp:
   model = DDP(model, device_ids=[ddp_local_rank])
-raw_model = model.module if ddp else model
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(raw_model, lr=3e-4)
@@ -80,8 +80,8 @@ if master_process:
 
 max_lr = 6e-4
 min_lr = max_lr * 0.1
-warmup_steps = 30
-max_steps = 700 # 19073 # 10B / 524288
+warmup_steps = 50
+max_steps = 1000 # 19073 # 10B / 524288
 
 
 # Training Loop
@@ -89,24 +89,29 @@ ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) # if use_bf1
 
 # Batch parameters
 B = 8
-T = 512
-total_batch_size = 1*B*T # 524288
+T = 1024
+total_batch_size = 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
+data_set_folder = "files/tinystories"
+
 if master_process:
+  print("------  Training Configuration ------")
   print(f"B = {B}, T = {T}")
   print(f"Using gradient accum steps: {gradient_accum_steps}")
   print(f"Total batch size: {total_batch_size}")
+  print(f"Dataset folder: {data_set_folder}")
+  print("------------------------------")
 
 # data loader
-train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train", data_root="files/tinysk", master_process=master_process)
-val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root="files/tinysk", master_process=master_process)
+train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train", data_root=data_set_folder, master_process=master_process)
+val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root=data_set_folder, master_process=master_process)
 
 for i in range(max_steps):
   st = time.time()
   last_step = (i == max_steps -1)
 
   # validation loss
-  if i > 0 and (i % 250 == 0 or last_step):
+  if i > 0 and (i % 100 == 0 or last_step):
     model.eval()
     val_loader.reset()
     with torch.no_grad():
@@ -126,10 +131,10 @@ for i in range(max_steps):
       print(f"Validation loss: {val_loss_accum.item():.4f}")
   
   # save checkpoint
-  if i > 0 and (i % 5000 == 0 or last_step) and master_process and False:
+  if last_step and master_process:
     save_checkpoint(
-        f"./ckps/fw_model_{i:05d}.pt",
-        raw_model._orig_mod if hasattr(raw_model, "_orig_mod") else raw_model,
+        f"./ckps/model_{i:05d}_{time.time()}.pt",
+        raw_model,
         optimizer,
         step=i,
         config=raw_model.config
@@ -193,7 +198,6 @@ for i in range(max_steps):
         lr=lr,
         tok_per_sec=tok_sec
     )
-
 
 
 if ddp:

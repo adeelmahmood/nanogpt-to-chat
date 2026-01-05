@@ -168,7 +168,7 @@ class CausalSelfAttention(nn.Module):
         v_full = torch.cat([v_past, v], dim=-2)
 
 
-    y = F.scaled_dot_product_attention(q, k_full, v_full, is_causal=True, enable_gqa=self.config.use_gqa)
+    y = F.scaled_dot_product_attention(q, k_full, v_full, is_causal=(T>1), enable_gqa=self.config.use_gqa)
     y = y.transpose(1, 2).contiguous().view(B, T, C)
 
     y = self.c_proj(y)
@@ -248,14 +248,14 @@ class GPTModel(nn.Module):
 
     loss = None
     if targets is not None:
-      loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+      loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
     return logits, loss
 
   @torch.inference_mode()
   def generate(self, idx, max_tokens, temperature=1.0, top_k=50, print_as_you_go=False, use_kv_cache=True):
     B, T = idx.shape
-
+    
     # enforce block_size limit for ROPE 
     if T > self.config.block_size:
       idx = idx[:, -self.config.block_size:]
@@ -264,9 +264,9 @@ class GPTModel(nn.Module):
     kv_cache = KVCache(self.config.n_layer) if use_kv_cache else None
 
     # prefill cache by running tokens through once
-    logits, _ = self(idx, kv_cache=kv_cache)
-    next_logits = logits[:, -1, :]
-
+    logits, _ = self(idx, kv_cache=kv_cache) # B, T, C (vocab_size)
+    next_logits = logits[:, -1, :] # B, C (vocab_size)
+    
     for _ in range(max_tokens):
       probs = F.softmax(next_logits / temperature, dim=-1)
 

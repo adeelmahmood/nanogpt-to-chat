@@ -58,23 +58,23 @@ torch.set_float32_matmul_precision('high')
 # initialize the model
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
-# initiatlize the optimizer
-optimizer = configure_optimizer(model, lr=1e-4)
 
 # load pretrained state for model and optimizer
-model, optimizer, _, _ = load_from_checkpoint(model, "./ckps/localmodel/pretrain_model_00487.pt", device, optimizer)
-raw_model = model
-# model = torch.compile(model)
-
-print("Loaded pretrained model. Sampling...")
-sample_from_model(model, tokenizer, device, "Sam", max_tokens=100)
+model, _, _, _ = load_from_checkpoint(model, "./ckps/localmodel/pretrain_model_00487.pt", device)
+# raw_model = model
+# model = torch.compile(model, dynamic=False)
 
 # wrap the model in ddp
 if ddp:
   model = DDP(model, device_ids=[ddp_local_rank])
 
+# initiatlize the optimizer
+optimizer = configure_optimizer(model, lr=1e-4)
+
 if master_process:
   print(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
+  print("Loaded pretrained model. Sampling...")
+  sample_from_model(model.module if ddp else model, tokenizer, device, "Sam", max_tokens=100)
 
 # Training Loop
 ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) # if use_bf16 else nullcontext()
@@ -98,8 +98,9 @@ train_loader = midtraining_loader(
     ddp_world_size=ddp_world_size
 )
 
-max_steps = 50 # 5_000
-print(f"Starting midtraining for {max_steps} steps with B={B} and T={T}")
+max_steps = 1001 # 5_000
+if master_process:
+  print(f"Starting midtraining for {max_steps} steps with B={B} and T={T}")
 
 model.train()
 for i in range(max_steps):
@@ -110,10 +111,9 @@ for i in range(max_steps):
   if last_step and master_process:
     save_checkpoint(
         f"./ckps/localmodel/midtrain_model_{i:05d}.pt",
-        raw_model,
+        model.module if ddp else model,
         optimizer,
-        step=i,
-        config=raw_model.config
+        step=i
     )
     print(f"Checkpoint saved at step {i}")
 
@@ -159,9 +159,10 @@ for i in range(max_steps):
     )
 
 
-model.eval()
-print("Finished mitraining. Sampling...")
-sample_from_model(model.module if ddp else model, tokenizer, device, "Sam", max_tokens=100)
+if master_process:
+  model.eval()
+  print("Finished mitraining. Sampling...")
+  sample_from_model(model.module if ddp else model, tokenizer, device, "Sam", max_tokens=100)
 
 if ddp:
   destroy_process_group()

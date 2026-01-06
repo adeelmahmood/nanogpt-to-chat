@@ -82,7 +82,7 @@ def render_conversation(conversation, tokenizer, max_tokens=None):
             add(tokenizer.encode(content), 0)
             add(special.user_end, 0)
 
-        else: 
+        elif role == "assistant":
             # assistant messages, TRAIN on them
             add(special.assistant_start, 0)
             add(tokenizer.encode(content), 1)
@@ -96,19 +96,25 @@ def render_conversation(conversation, tokenizer, max_tokens=None):
             
 
 if __name__ == "__main__":
-    conversation = {
-        "messages": [
-            {
-            "role": "user",
-            "content": "Who are you?"
-            },
-            {
-            "role": "assistant",
-            "content": "I am AI"
-            },
-        ]
-    }
-
     import tiktoken
-    tokenizer = tiktoken.get_encoding('gpt2')
-    print(render_conversation(conversation, tokenizer))
+    from tasks import SmolTalkTask
+
+    tokenizer = tiktoken.get_encoding("gpt2")
+    task = SmolTalkTask()
+
+    # grab ONE conversation
+    conv = task.get_example(0)
+
+    ids, mask = render_conversation(conv, tokenizer)
+
+    print("\n=== RAW CONVERSATION ===")
+    for msg in conv["messages"]:
+        print(f"{msg['role'].upper()}: {msg['content']}")
+
+    print("\n=== TOKENS + MASK ===")
+    for i, (tid, m) in enumerate(zip(ids, mask)):
+        token_str = decode_with_special_tokens([tid], tokenizer)
+        token_str = token_str.replace("\n", "\\n")
+
+        tag = "TRAIN" if m == 1 else "-----"
+        print(f"{i:4d} | id={tid:6d} | mask={m} | {tag} | '{token_str}'")

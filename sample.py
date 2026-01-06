@@ -16,7 +16,7 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-checkpoint = torch.load("./ckps/localmodel/midtrain_model_01999.pt", map_location=device, weights_only=False)
+checkpoint = torch.load("./ckps/localmodel/midtrain_model_01000.pt", map_location=device, weights_only=False)
 
 # --- FIX: strip `_orig_mod.` keys if present ---
 state = checkpoint["model_state_dict"]
@@ -44,7 +44,7 @@ torch.cuda.manual_seed(1)
 sampler = Sampler(temperature=1.0, top_k=50)
 engine = Engine(model, sampler, use_kv_cache=True)
 
-text = "Who is Max?"
+text = "How are you?"
 idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
 
 token_ids, state = engine.generate(idx, max_new_tokens=50)

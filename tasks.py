@@ -4,6 +4,7 @@ from datasets import load_dataset
 
 
 from chat import render_conversation
+from utils import render_mcq
 
 class Task:
     def __init__(self, start=0, stop=None):
@@ -62,6 +63,9 @@ class SmolTalkTask(Task):
 
 
 class MMLU(Task):
+
+    letters = ('A', 'B', 'C', 'D')
+
     def __init__(self, start=0, stop=None, split="train", subset="auxiliary_train"):
         super().__init__(start, stop)
         assert split in ["train", "test"], "split must be train|test"
@@ -79,8 +83,48 @@ class MMLU(Task):
     
     def get_example(self, idx):
         row = self.ds[idx]
+        question = row["question"]
+        choices = row["choices"]
+        answer = row["answer"]
+        subject = row["subject"]
+
+        user_message = render_mcq(question, self.letters, choices)
+        assistant_message = self.letters[answer]
+
+        messages = [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": assistant_message},
+        ]
         
+        conversation = {
+            "messages": messages,
+            "subject": subject,
+            "letters": self.letters
+        }
+
+        return conversation
+
+
+class Arc(Task):
+
+    def __init__(self, start=0, stop=None, split="train", subset="ARC-Easy"):
+        super().__init__(start, stop)
+        assert split in ["train", "test"], "split must be train|test"
+        assert subset in ["ARC-Easy", "ARC-Challenge"], "subset must be ARC-Easy|ARC-Challenge"
+
+        print(f"Loading MMLU {split} {subset}")
+        self.ds = load_dataset("allenai/ar2_arc", subset, split=split)
+        self.ds = self.ds.shuffle(seed=42)
+        self.length = len(self.ds)
+        print(f"Loaded {self.length:,} questions")
+
+    def __len__(self):
+        return self.length
+    
+    def get_example(self, idx):
+        row = self.ds[idx]
         print(row)
+    
 
 
 if __name__ == "__main__":
@@ -93,4 +137,9 @@ if __name__ == "__main__":
     # import tiktoken
     # tokenizer = tiktoken.get_encoding('gpt2')
     # print(render_conversation(tasks.get(0), tokenizer))
-    mmlu.get_example(0)
+    ex = mmlu.get_example(0)
+    print(ex)
+    print("---\n\n")
+
+    question = ex["messages"][0]["content"]
+    print(question)

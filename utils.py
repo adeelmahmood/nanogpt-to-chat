@@ -75,3 +75,10 @@ def sample_from_model(model, tokenizer, device, context, max_tokens):
     print(">>>")
     print(decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer))
     print(">>>")
+
+
+def render_mcq(question, letters, choices):
+   str = f"Multiple choice question: {question}\n"
+   str += "".join([f"- {c}={l}\n" for l, c in zip(letters, choices)])
+   str += f"\nRespond only with the letter of the correct answer."
+   return str

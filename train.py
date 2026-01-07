@@ -1,24 +1,26 @@
+from contextlib import nullcontext
 from datetime import datetime
 from dataloader import DataLoaderLite
 from gpt import GPTConfig, GPTModel, configure_optimizer
-from logger import MetricLogger
 import torch
 import time
+import os
+import tiktoken
+from tqdm import tqdm
+
+import wandb
 
 from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
-import tiktoken
-
-import os
 
 from utils import get_lr, save_checkpoint
 
-from tqdm import tqdm
+def print0(s="", **kwargs):
+  ddp_rank = int(os.environ.get("DDP_RANK", 0))
+  if ddp_rank == 0:
+    print(s, **kwargs)
 
-
-# set up logger
-logger = MetricLogger("runs", "tinystories")
 
 # distributed data parallel setup
 ddp = int(os.environ.get("RANK", -1)) != -1
@@ -42,10 +44,19 @@ else:
   elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
       device = "mps"
   
-
+send_to_wandb = int(os.environ.get("SEND_TO_WANDB", -1)) != -1
 device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
-if master_process:
-  print(f"using device: {device} type {device_type}")
+print0(f"using device: {device} type {device_type}")
+
+if device_type == "cuda":
+  torch.backends.cuda.matmul.fp32_precision = "tf32" # uses tf32 instead of fp32 for matmuls
+
+autocast_ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) if device_type == "cuda" else nullcontext()
+synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None
+
+# log
+if send_to_wandb:
+  wandb_run = wandb.init(project="nano-chat", name="pre-train")
 
 # set seeds
 torch.manual_seed(1337 + ddp_rank)
@@ -54,58 +65,49 @@ torch.cuda.manual_seed(1337 + ddp_rank)
 # define the tokenizer
 tokenizer = tiktoken.get_encoding("gpt2")
 
-torch.set_float32_matmul_precision('high')
-
 # initialize the model
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
-raw_model = model
-model = torch.compile(model)
+# model = torch.compile(model)
 
 # wrap the model in ddp
 if ddp:
   model = DDP(model, device_ids=[ddp_local_rank])
 
 # initiatlize the optimizer
-optimizer = configure_optimizer(raw_model, lr=3e-4)
-if master_process:
-  print(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
+optimizer = configure_optimizer(model, lr=3e-4)
+print0(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
 
 
+# Hyper parameters
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 warmup_steps = 50
-max_steps = 1000 # 19073 # 10B / 524288
+max_steps = 100 # 19073 # 10B / 524288
 
-
-# Training Loop
-ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) # if use_bf16 else nullcontext()
-
-# Batch parameters
 B = 8
 T = 1024
-total_batch_size = 524288
+total_batch_size = 1*B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
 data_set_folder = "files/tinystories"
 
-if master_process:
-  print(f"------  Starting Training ({datetime.now()}) ------")
-  print(f"B = {B}, T = {T}")
-  print(f"Using gradient accum steps: {gradient_accum_steps}")
-  print(f"Total batch size: {total_batch_size}")
-  print(f"Dataset folder: {data_set_folder}")
-  print("------------------------------")
+print0(f"\nB = {B}, T = {T}")
+print0(f"Using gradient accum steps: {gradient_accum_steps}")
+print0(f"Total batch size: {total_batch_size}")
+print0(f"Dataset folder: {data_set_folder}")
 
 # data loader
 train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train", data_root=data_set_folder, master_process=master_process)
 val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root=data_set_folder, master_process=master_process)
 
-for i in range(max_steps):
-  st = time.time()
-  last_step = (i == max_steps -1)
+total_time = 0
+print0(f"\nStarting Training ({datetime.now()})")
+
+for step in range(1, max_steps):
+  last_step = (step == max_steps -1)
 
   # validation loss
-  if i > 0 and (i % 100 == 0 or last_step):
+  if step > 0 and (step % 100 == 0 or last_step):
     model.eval()
     val_loader.reset()
     with torch.no_grad():
@@ -114,34 +116,34 @@ for i in range(max_steps):
       for _ in range(val_loss_steps):
         x, y = val_loader.next_batch()
         x, y = x.to(device), y.to(device)
-        with ctx:
+        with autocast_ctx:
           _, loss = model(x, y)
         loss = loss / val_loss_steps
         val_loss_accum += loss.detach()
     
     if ddp:
       dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
-    if master_process:
-      print(f"Validation loss: {val_loss_accum.item():.4f}")
+    print0(f"Validation loss: {val_loss_accum.item():.4f}")
+    model.train()
   
   # save checkpoint
   if last_step and master_process:
     save_checkpoint(
-        f"./ckps/model_{i:05d}_{time.time()}.pt",
-        raw_model,
+        f"./ckps/model_{step:05d}_{time.time()}.pt",
+        model.module if ddp else model,
         optimizer,
-        step=i,
-        config=raw_model.config
+        step=step,
     )
-    print(f"Checkpoint saved at step {i}")
+    print(f"Checkpoint saved at step {step}")
 
 
   # training
-  model.train()
-  optimizer.zero_grad()
+  synchronize()
+  st = time.time()
+  optimizer.zero_grad(set_to_none=True)
   loss_accum = torch.zeros(1, device=device)
 
-  for grad_step in tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False):
+  for grad_step in (tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False) if gradient_accum_steps > 2 else range(gradient_accum_steps)):
     # get a batch
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
@@ -151,7 +153,7 @@ for i in range(max_steps):
       model.require_backward_grad_sync = (grad_step == gradient_accum_steps-1)
 
     # forward pass
-    with ctx:
+    with autocast_ctx:
       _, loss = model(x, y)
 
     # average the loss across grad accum batch
@@ -169,31 +171,38 @@ for i in range(max_steps):
   norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
   # get learning rate
-  lr = get_lr(i, max_lr, min_lr, warmup_steps, max_steps)
+  lr = get_lr(step, max_lr, min_lr, warmup_steps, max_steps)
   for pg in optimizer.param_groups:
     pg["lr"] = lr
 
   # update
   optimizer.step()
 
-  # synchronize to time
-  if 'cuda' in device:
-    torch.cuda.synchronize()
-
+  # logging
+  synchronize()
   et = time.time()
   tok_sec = (train_loader.B * train_loader.T * gradient_accum_steps * ddp_world_size) / (et-st)
-  # if i % (max_iter*0.1) == 0 or i == max_iter-1:
-  if master_process:
-    print(f"step: {i} | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f}")
-    logger.log(
-        step=i,
-        train_loss=loss_accum.item(),
-        grad_norm=norm.item(),
-        lr=lr,
-        tok_per_sec=tok_sec
-    )
+  pct_done = 100 * step / max_steps
+  total_time += (et-st)
+  avg_time_per_step = total_time / step
+  remaining_steps = max_steps - step
+  eta_seconds = remaining_steps * avg_time_per_step
+  print0(f"step: {step:05d}/{max_steps:05d} ({pct_done:.2f}%) | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m")
+
+  if master_process and send_to_wandb:
+    wandb_run.log({
+        "step": step,
+        "train_loss": loss_accum.item(),
+        "grad_norm": norm.item(),
+        "lr": lr,
+        "tok_per_sec": tok_sec,
+        "total_time": total_time,
+    })
 
 print("Training completed", datetime.now())
 
+if send_to_wandb: 
+  wandb_run.finish()
+  
 if ddp:
   destroy_process_group()

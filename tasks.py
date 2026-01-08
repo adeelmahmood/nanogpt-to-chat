@@ -1,8 +1,6 @@
 import random
 from datasets import load_dataset
 
-
-
 from chat import render_conversation
 from utils import render_mcq
 
@@ -45,7 +43,7 @@ class SmolTalkTask(Task):
         assert split in ["train", "test"], "split must be train|test"
 
         print(f"Loading SmolTalk {split}")
-        self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=split)
+        self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}[:100]")
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} conversations")

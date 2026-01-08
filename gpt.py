@@ -52,6 +52,10 @@ def rope_apply(x, cos, sin, offset = 0):
   x1 = x[..., :half]
   x2 = x[..., half:]
 
+  # cast to float 32
+  x1 = x1.float()
+  x2 = x2.float()
+
   # cos, sin are (1, 1, seq_len, half_dim), slice to match T
   cos = cos[:, :, offset:offset+T, :]  # (1, 1, T, half_dim)
   sin = sin[:, :, offset:offset+T, :]  # (1, 1, T, half_dim)
@@ -59,7 +63,8 @@ def rope_apply(x, cos, sin, offset = 0):
   rotated_x1 = x1 * cos - x2 * sin
   rotated_x2 = x1 * sin + x2 * cos
 
-  return torch.cat([rotated_x1, rotated_x2], dim=-1)
+  out = torch.cat([rotated_x1, rotated_x2], dim=-1)
+  return out.type_as(x)
   
 
 def norm(x, use_rms=True):

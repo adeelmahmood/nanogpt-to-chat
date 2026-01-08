@@ -1,23 +1,22 @@
 from contextlib import nullcontext
-from gpt import GPTConfig, GPTModel, configure_optimizer
-from logger import MetricLogger
+from datetime import datetime
 from dataloader_midtrain import midtraining_loader
+from gpt import GPTConfig, GPTModel, configure_optimizer
 from tasks import SmolTalkTask, TaskMixture
 import torch
 import time
+import os
+import tiktoken
+from tqdm import tqdm
+
+import wandb
 
 from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
-import tiktoken
 
-import os
+from utils import load_from_checkpoint, print0, sample_from_model, save_checkpoint
 
-from utils import load_from_checkpoint, sample_from_model, save_checkpoint
-
-
-# set up logger
-logger = MetricLogger("runs", "midtraining")
 
 # distributed data parallel setup
 ddp = int(os.environ.get("RANK", -1)) != -1
@@ -41,10 +40,19 @@ else:
   elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
       device = "mps"
   
-
+send_to_wandb = int(os.environ.get("SEND_TO_WANDB", -1)) != -1
 device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
-if master_process:
-  print(f"using device: {device} type {device_type}")
+print0(f"using device: {device} type {device_type}")
+
+if device_type == "cuda":
+  torch.backends.cuda.matmul.fp32_precision = "tf32" # uses tf32 instead of fp32 for matmuls
+
+autocast_ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) if device_type == "cuda" else nullcontext()
+synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None
+
+# log
+if send_to_wandb:
+  wandb_run = wandb.init(project="nano-chat", name="mid-train")
 
 # set seeds
 torch.manual_seed(1337 + ddp_rank)
@@ -53,15 +61,13 @@ torch.cuda.manual_seed(1337 + ddp_rank)
 # define the tokenizer
 tokenizer = tiktoken.get_encoding("gpt2")
 
-torch.set_float32_matmul_precision('high')
-
 # initialize the model
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
 
 # load pretrained state for model and optimizer
-model, _, _, _ = load_from_checkpoint(model, "./ckps/localmodel/pretrain_model_00487.pt", device)
-# raw_model = model
+checkpoint = "./ckps/localmodel/pretrain_model_00487.pt"
+model, _, _, _ = load_from_checkpoint(model, checkpoint, device)
 # model = torch.compile(model, dynamic=False)
 
 # wrap the model in ddp
@@ -70,18 +76,26 @@ if ddp:
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(model, lr=1e-4)
+for pg in optimizer.param_groups:
+  pg["initial_lr"] = pg["lr"]
 
 if master_process:
   print(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
   print("Loaded pretrained model. Sampling...")
   sample_from_model(model.module if ddp else model, tokenizer, device, "Sam", max_tokens=100)
 
-# Training Loop
-ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) # if use_bf16 else nullcontext()
 
-# Batch parameters
+# Hyper parameters
+max_steps = 1001 # 5_000
 B = 4
 T = 1024
+total_batch_size = 1*B*T # 524288
+gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
+sg = gradient_accum_steps > 2
+
+print0(f"\nB = {B}, T = {T}")
+print0(f"Using gradient accum steps: {gradient_accum_steps}")
+print0(f"Total batch size: {total_batch_size}")
 
 # Midtraining dataset
 task = TaskMixture([
@@ -98,39 +112,57 @@ train_loader = midtraining_loader(
     ddp_world_size=ddp_world_size
 )
 
-max_steps = 1001 # 5_000
-if master_process:
-  print(f"Starting midtraining for {max_steps} steps with B={B} and T={T}")
+total_time = 0
+progress = 0
+step = 0
 
-model.train()
-for i in range(max_steps):
-  st = time.time()
-  last_step = (i == max_steps - 1)
-  
+def get_lr_multiplier(progress):
+    # first 80% of training: no decay, then linearly ramp down to 0.
+    return 1 if progress < 0.8 else 1 - (progress - 0.8) / 0.2
+
+print0(f"\nStarting Mid-Training ({datetime.now()})")
+
+while True:
+  last_step = progress >= 1.0
+
   # save checkpoint
   if last_step and master_process:
     save_checkpoint(
-        f"./ckps/localmodel/midtrain_model_{i:05d}.pt",
+        f"./ckps/localmodel/midtrain_model_{step:05d}.pt",
         model.module if ddp else model,
         optimizer,
-        step=i
+        step=step
     )
-    print(f"Checkpoint saved at step {i}")
+    print(f"Checkpoint saved at step {step}")
 
+  if last_step:
+    break
 
-  optimizer.zero_grad()
-  
-  # get a batch
-  x, y = next(train_loader)
-  
-  # forward pass
-  with ctx:
-    _, loss = model(x, y)
+  # train
+  synchronize()
+  st = time.time()
+  optimizer.zero_grad(set_to_none=True)
+  loss_accum = torch.zeros(1, device=device)
 
-  loss_accum = loss.detach()
+  for grad_step in (tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False) if sg else range(gradient_accum_steps)):
+    # get a batch
+    x, y, rank_progress = next(train_loader)
+    progress = max(progress, rank_progress)
 
-  # backward pass
-  loss.backward()
+    # this prevents synching of gradients across ranks until grad accumulation is done
+    if ddp:
+      model.require_backward_grad_sync = (grad_step == gradient_accum_steps-1)
+    
+    # forward pass
+    with autocast_ctx:
+      _, loss = model(x, y)
+
+    # average the loss across grad accum batch
+    loss = loss / gradient_accum_steps
+    loss_accum += loss.detach()
+
+    # backward pass
+    loss.backward()
 
   # gather loss from all ranks
   if ddp:
@@ -139,30 +171,39 @@ for i in range(max_steps):
   # clip gradients
   norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
+  # get learning rate
+  lrm = get_lr_multiplier(progress)
+  for pg in optimizer.param_groups:
+    pg["lr"] = pg["initial_lr"] * lrm
+
   # update
   optimizer.step()
 
-  # synchronize to time
-  if 'cuda' in device:
-    torch.cuda.synchronize()
-
+  # logging
+  synchronize()
   et = time.time()
   tok_sec = (B * T * ddp_world_size) / (et-st)
-  # if i % (max_iter*0.1) == 0 or i == max_iter-1:
-  if master_process:
-    print(f"step: {i} | loss: {loss_accum.item():.4f} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f}")
-    logger.log(
-        step=i,
-        train_loss=loss_accum.item(),
-        grad_norm=norm.item(),
-        tok_per_sec=tok_sec
-    )
+  total_time += (et-st)
+  pct_done = 100 * progress
+  step += 1
+  print0(f"step: {step:05d} ({pct_done:.2f})% | loss: {loss_accum.item():.4f} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m")
+
+  if master_process and send_to_wandb:
+    wandb_run.log({
+        "step": step,
+        "train_loss": loss_accum.item(),
+        "grad_norm": norm.item(),
+        "tok_per_sec": tok_sec
+    })
 
 
 if master_process:
   model.eval()
   print("Finished mitraining. Sampling...")
   sample_from_model(model.module if ddp else model, tokenizer, device, "Sam", max_tokens=100)
+
+if send_to_wandb: 
+  wandb_run.finish()
 
 if ddp:
   destroy_process_group()

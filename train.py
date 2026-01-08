@@ -14,12 +14,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-from utils import get_lr, save_checkpoint
-
-def print0(s="", **kwargs):
-  ddp_rank = int(os.environ.get("DDP_RANK", 0))
-  if ddp_rank == 0:
-    print(s, **kwargs)
+from utils import get_lr, print0, save_checkpoint
 
 
 # distributed data parallel setup
@@ -68,11 +63,12 @@ tokenizer = tiktoken.get_encoding("gpt2")
 # initialize the model
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
-# model = torch.compile(model)
+# model = torch.compile(model, dynamic=False)
 
 # wrap the model in ddp
 if ddp:
   model = DDP(model, device_ids=[ddp_local_rank])
+
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(model, lr=3e-4)

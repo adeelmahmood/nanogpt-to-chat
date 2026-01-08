@@ -1,3 +1,4 @@
+import os
 from chat import decode_with_special_tokens
 from engine import Engine, Sampler
 from gpt import GPTConfig, GPTModel
@@ -82,3 +83,9 @@ def render_mcq(question, letters, choices):
    str += "".join([f"- {c}={l}\n" for l, c in zip(letters, choices)])
    str += f"\nRespond only with the letter of the correct answer."
    return str
+
+
+def print0(s="", **kwargs):
+  ddp_rank = int(os.environ.get("DDP_RANK", 0))
+  if ddp_rank == 0:
+    print(s, **kwargs)

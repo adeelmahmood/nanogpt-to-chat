@@ -14,7 +14,6 @@ def midtraining_loader(tokenizer, task, batch_size, seq_len, device, ddp_rank=0,
     # scratch_mask = torch.empty(needed_tokens, dtype=torch.long) 
     
     pointer = ddp_rank 
-    examples_processed_by_this_rank = 0
     task_size = len(task) 
     
     while True: 
@@ -27,8 +26,7 @@ def midtraining_loader(tokenizer, task, batch_size, seq_len, device, ddp_rank=0,
             # mask_buffer.extend(mask) 
             
             pointer += ddp_world_size 
-            examples_processed_by_this_rank += 1
-
+            
             if pointer >= task_size: 
                 pointer -= task_size 
             
@@ -45,11 +43,8 @@ def midtraining_loader(tokenizer, task, batch_size, seq_len, device, ddp_rank=0,
         # apply mask
         # y = y.masked_fill(m == 0, -1) 
 
-        # progress: percentage of the dataset consumed
-        rank_progress = min(1.0, (examples_processed_by_this_rank * ddp_world_size) / task_size)
-        
         # if (y != -1).any(): 
-        yield ( x.to(device, non_blocking=True), y.to(device, non_blocking=True), rank_progress )
+        yield ( x.to(device, non_blocking=True), y.to(device, non_blocking=True) )
 
 
 if __name__ == "__main__":

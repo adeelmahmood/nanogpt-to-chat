@@ -63,7 +63,8 @@ tokenizer = tiktoken.get_encoding("gpt2")
 # initialize the model
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
-# model = torch.compile(model, dynamic=False)
+orig_model = model # for saving checkpoints and sampling
+model = torch.compile(model, dynamic=False)
 
 # wrap the model in ddp
 if ddp:
@@ -86,6 +87,7 @@ T = 1024
 total_batch_size = 1*B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
 data_set_folder = "files/tinystories"
+sg = False
 
 print0(f"\nB = {B}, T = {T}")
 print0(f"Using gradient accum steps: {gradient_accum_steps}")
@@ -126,7 +128,7 @@ for step in range(1, max_steps):
   if last_step and master_process:
     save_checkpoint(
         f"./ckps/model_{step:05d}_{time.time()}.pt",
-        model.module if ddp else model,
+        orig_model,
         optimizer,
         step=step,
     )
@@ -139,7 +141,7 @@ for step in range(1, max_steps):
   optimizer.zero_grad(set_to_none=True)
   loss_accum = torch.zeros(1, device=device)
 
-  for grad_step in (tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False) if gradient_accum_steps > 2 else range(gradient_accum_steps)):
+  for grad_step in (tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False) if sg else range(gradient_accum_steps)):
     # get a batch
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
@@ -178,12 +180,12 @@ for step in range(1, max_steps):
   synchronize()
   et = time.time()
   tok_sec = (train_loader.B * train_loader.T * gradient_accum_steps * ddp_world_size) / (et-st)
-  pct_done = 100 * step / max_steps
   total_time += (et-st)
+  total_tokens += (train_loader.B * train_loader.T * gradient_accum_steps * ddp_world_size)
   avg_time_per_step = total_time / step
   remaining_steps = max_steps - step
   eta_seconds = remaining_steps * avg_time_per_step
-  print0(f"step: {step:05d}/{max_steps:05d} ({pct_done:.2f}%) | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m")
+  print0(f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}")
 
   if master_process and send_to_wandb:
     wandb_run.log({
@@ -193,6 +195,7 @@ for step in range(1, max_steps):
         "lr": lr,
         "tok_per_sec": tok_sec,
         "total_time": total_time,
+        "total_tokens": total_tokens,
     })
 
 print("Training completed", datetime.now())

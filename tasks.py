@@ -1,7 +1,6 @@
 import random
 from datasets import load_dataset
 
-from chat import render_conversation
 from utils import render_mcq
 
 class Task:
@@ -43,7 +42,8 @@ class SmolTalkTask(Task):
         assert split in ["train", "test"], "split must be train|test"
 
         print(f"Loading SmolTalk {split}")
-        self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}[:100]")
+        # self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}[:100]")
+        self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}")
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} conversations")
@@ -110,8 +110,8 @@ class Arc(Task):
         assert split in ["train", "test"], "split must be train|test"
         assert subset in ["ARC-Easy", "ARC-Challenge"], "subset must be ARC-Easy|ARC-Challenge"
 
-        print(f"Loading MMLU {split} {subset}")
-        self.ds = load_dataset("allenai/ar2_arc", subset, split=split)
+        print(f"Loading Arc {split} {subset}")
+        self.ds = load_dataset("allenai/ai2_arc", subset, split=split)
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} questions")
@@ -121,12 +121,32 @@ class Arc(Task):
     
     def get_example(self, idx):
         row = self.ds[idx]
-        print(row)
+        question = row["question"]
+        choices = row["choices"]["text"]
+        letters = row["choices"]["label"]
+        answer = row["answerKey"]
+
+        user_message = render_mcq(question, letters, choices)
+        assistant_message = answer
+
+        messages = [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": assistant_message},
+        ]
+        
+        conversation = {
+            "messages": messages,
+            "letters": letters
+        }
+
+        return conversation
+
+
     
 
 
 if __name__ == "__main__":
-    mmlu = MMLU()
+    arc = Arc(subset="ARC-Challenge")
     # smoltalk = SmolTalkTask()
     # tasks = TaskMixture([smoltalk])
     # print(f"All tasks len: {len(tasks)}")
@@ -135,9 +155,9 @@ if __name__ == "__main__":
     # import tiktoken
     # tokenizer = tiktoken.get_encoding('gpt2')
     # print(render_conversation(tasks.get(0), tokenizer))
-    ex = mmlu.get_example(0)
+    ex = arc.get_example(0)
     print(ex)
     print("---\n\n")
 
     question = ex["messages"][0]["content"]
-    print(question)
+    print(f">\n{question}\n>")

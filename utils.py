@@ -86,6 +86,6 @@ def render_mcq(question, letters, choices):
 
 
 def print0(s="", **kwargs):
-  ddp_rank = int(os.environ.get("DDP_RANK", 0))
+  ddp_rank = int(os.environ.get("RANK", 0))
   if ddp_rank == 0:
     print(s, **kwargs)

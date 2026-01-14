@@ -146,18 +146,9 @@ class Arc(Task):
 
 
 if __name__ == "__main__":
-    arc = Arc(subset="ARC-Challenge")
-    # smoltalk = SmolTalkTask()
-    # tasks = TaskMixture([smoltalk])
-    # print(f"All tasks len: {len(tasks)}")
-    # print(tasks.get(0))
+    task = TaskMixture([
+        SmolTalkTask(),
+        MMLU(),
+        Arc()
+    ])
 
-    # import tiktoken
-    # tokenizer = tiktoken.get_encoding('gpt2')
-    # print(render_conversation(tasks.get(0), tokenizer))
-    ex = arc.get_example(0)
-    print(ex)
-    print("---\n\n")
-
-    question = ex["messages"][0]["content"]
-    print(f">\n{question}\n>")

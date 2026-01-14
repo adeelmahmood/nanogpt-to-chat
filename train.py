@@ -44,7 +44,7 @@ device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
 print0(f"using device: {device} type {device_type}")
 
 if device_type == "cuda":
-  torch.backends.cuda.matmul.fp32_precision = "tf32" # uses tf32 instead of fp32 for matmuls
+  torch.set_float32_matmul_precision('high')
 
 autocast_ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) if device_type == "cuda" else nullcontext()
 synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None

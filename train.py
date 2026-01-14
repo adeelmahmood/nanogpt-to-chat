@@ -64,7 +64,7 @@ tokenizer = tiktoken.get_encoding("gpt2")
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
 orig_model = model # for saving checkpoints and sampling
-model = torch.compile(model, dynamic=False)
+# model = torch.compile(model, dynamic=False)
 
 # wrap the model in ddp
 if ddp:
@@ -99,6 +99,7 @@ train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp
 val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root=data_set_folder, master_process=master_process)
 
 total_time = 0
+total_tokens = 0
 print0(f"\nStarting Training ({datetime.now()})")
 
 for step in range(1, max_steps):
@@ -179,9 +180,10 @@ for step in range(1, max_steps):
   # logging
   synchronize()
   et = time.time()
-  tok_sec = (train_loader.B * train_loader.T * gradient_accum_steps * ddp_world_size) / (et-st)
+  step_tokens = train_loader.B * train_loader.T * gradient_accum_steps * ddp_world_size
+  tok_sec = step_tokens / (et-st)
   total_time += (et-st)
-  total_tokens += (train_loader.B * train_loader.T * gradient_accum_steps * ddp_world_size)
+  total_tokens += step_tokens
   avg_time_per_step = total_time / step
   remaining_steps = max_steps - step
   eta_seconds = remaining_steps * avg_time_per_step

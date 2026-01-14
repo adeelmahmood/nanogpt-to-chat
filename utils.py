@@ -6,6 +6,10 @@ import torch
 import math
 
 def save_checkpoint(path, model, optimizer, step, config=None):
+  # make the directory if it doesn't exist
+  os.makedirs(os.path.dirname(path), exist_ok=True)
+
+  # save the checkpoint
   checkpoint = {
       "model_state_dict": model.state_dict(),
       "optimizer_state_dict": optimizer.state_dict(),

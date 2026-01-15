@@ -52,7 +52,7 @@ class Engine:
     
 
     @torch.inference_mode()
-    def generate(self, idx, max_new_tokens):
+    def generate(self, idx, max_new_tokens, stop_token_id=None):
         B, T = idx.shape
         assert B==1, "Engine.generate supports B=1"
 
@@ -77,6 +77,13 @@ class Engine:
 
             # sample
             idx_next = self.sampler.sample(next_logits)
+
+            # check for end token
+            if stop_token_id is not None and idx_next.item() == stop_token_id:
+                state.stopped = True
+                state.stop_reason = "Stop token generated"
+                break
+
             idx = torch.cat([idx, idx_next], dim=1)
             state.generated += 1
 

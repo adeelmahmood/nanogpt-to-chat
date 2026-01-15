@@ -67,6 +67,8 @@ rm -f ~/.netrc
 echo "== Cleanup root caches =="
 rm -rf ~/.cache/{huggingface,wandb,pip} ~/.local/share/wandb || true
 
+source ~/.bashrc
+
 echo "== Validation =="
 python - <<EOF
 import sys, torch, os

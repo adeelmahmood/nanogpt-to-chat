@@ -1,26 +1,29 @@
-from chat import render_conversation
-from dataloader_midtrain import midtraining_loader
-from tasks import SmolTalkTask, TaskMixture
-import tiktoken
+from tasks import MMLU, Arc, SmolTalkTask
+from transformers import AutoTokenizer
+from tqdm import tqdm
 
-if __name__ == "__main__":
-    tokenizer = tiktoken.get_encoding('gpt2')
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
-    task = TaskMixture([SmolTalkTask()])
-    loader = midtraining_loader(tokenizer, task, 16, 1024, 'cpu', 0, 1)
+def count_tokens(task, max_samples=None):
+    total = 0
+    n = len(task)
+    if max_samples:
+        n = min(n, max_samples)
 
-    total_tokens = 0
-    idx = 0
+    for i in tqdm(range(n)):
+        ex = task.get_example(i)
+        text = ""
+        for m in ex["messages"]:
+            text += m["role"] + ": " + m["content"] + "\n"
+        total += len(tokenizer(text).input_ids)
 
-    while True:
-        x, y, progress = next(loader)
-        
-        total_tokens += x.size(0) * x.size(1)
-        pct_done = 100 * progress
-        idx += 1
+    return total, total / n
 
-        if idx % 100 == 0:
-            print(f"idx {idx} progress {progress:.2f} token {total_tokens:,}")
+# Example usage
+smol = SmolTalkTask()
+mmlu = MMLU()
+arc = Arc()
 
-        if progress > 0.2:
-            break
+print("SmolTalk:", count_tokens(smol, max_samples=1000))
+print("MMLU:", count_tokens(mmlu, max_samples=1000))
+print("ARC:", count_tokens(arc, max_samples=1000))

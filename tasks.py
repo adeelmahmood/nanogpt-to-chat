@@ -142,13 +142,39 @@ class Arc(Task):
         return conversation
 
 
+
+class GSM8K(Task):
+    def __init__(self, split="train", subset="main"):
+        super().__init__()
+        assert split in ["train", "test"]
+
+        print(f"Loading GSM5k {split} {subset}")
+        self.ds = load_dataset("openai/gsm8k", subset, split=split).shuffle(seed=42)
+        self.length = len(self.ds)
+        print(f"Loaded {self.length:,} questions")
+
+    def __len__(self):
+        return self.length
+
+    def get_example(self, idx):
+        row = self.ds[idx]
+        question = row["question"]
+        answer = row["answer"]
+
+        # Remove the final #### answer marker if you want
+        # or keep it — both are fine for midtraining
+        answer = answer.strip()
+
+        messages = [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer},
+        ]
+
+        return {"messages": messages}
+
     
 
 
 if __name__ == "__main__":
-    task = TaskMixture([
-        SmolTalkTask(),
-        MMLU(),
-        Arc()
-    ])
-
+    task = GSM8K()
+    print(task.get_example(0))

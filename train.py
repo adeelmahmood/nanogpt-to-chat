@@ -50,7 +50,7 @@ autocast_ctx = torch.autocast(device_type=device_type, dtype=torch.bfloat16) if 
 synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None
 
 # log
-if send_to_wandb:
+if send_to_wandb and master_process:
   wandb_run = wandb.init(project="nano-chat", name="pre-train")
 
 # set seeds
@@ -79,14 +79,14 @@ print0(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2
 # Hyper parameters
 max_lr = 6e-4
 min_lr = max_lr * 0.1
-warmup_steps = 50
-max_steps = 100 # 19073 # 10B / 524288
+warmup_steps = 20
+max_steps = 500 # 19073 # 10B / 524288
 
-B = 8
+B = 4
 T = 1024
 total_batch_size = 1*B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
-data_set_folder = "files/tinystories"
+data_set_folder = "files/tinysk"
 sg = False
 
 print0(f"\nB = {B}, T = {T}")
@@ -106,7 +106,7 @@ for step in range(1, max_steps):
   last_step = (step == max_steps -1)
 
   # validation loss
-  if step > 0 and (step % 100 == 0 or last_step):
+  if step > 0 and (step % 50 == 0 or last_step):
     model.eval()
     val_loader.reset()
     with torch.no_grad():
@@ -117,12 +117,19 @@ for step in range(1, max_steps):
         x, y = x.to(device), y.to(device)
         with autocast_ctx:
           _, loss = model(x, y)
-        loss = loss / val_loss_steps
         val_loss_accum += loss.detach()
+      val_loss_accum /= val_loss_steps
     
     if ddp:
       dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
     print0(f"Validation loss: {val_loss_accum.item():.4f}")
+    if master_process and send_to_wandb:
+      wandb_run.log(
+          {
+              "val/loss": loss_accum.item()
+          },
+          step=step,
+      )
     model.train()
   
   # save checkpoint
@@ -190,19 +197,23 @@ for step in range(1, max_steps):
   print0(f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}")
 
   if master_process and send_to_wandb:
-    wandb_run.log({
-        "step": step,
-        "train_loss": loss_accum.item(),
-        "grad_norm": norm.item(),
-        "lr": lr,
-        "tok_per_sec": tok_sec,
-        "total_time": total_time,
-        "total_tokens": total_tokens,
-    })
+    wandb_run.log(
+        {
+            "train/loss": loss_accum.item(),
+            "train/grad_norm": norm.item(),
+            "train/lr": lr,
+
+            "perf/tok_per_sec": tok_sec,
+
+            "progress/total_time": total_time,
+            "progress/total_tokens": total_tokens,
+        },
+        step=step,
+    )
 
 print("Training completed", datetime.now())
 
-if send_to_wandb: 
+if send_to_wandb and master_process:
   wandb_run.finish()
   
 if ddp:

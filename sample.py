@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from chat import decode_with_special_tokens
+from chat import decode_with_special_tokens, get_special_tokens
 from engine import Engine, Sampler
 from gpt import GPTConfig, GPTModel
 import torch
@@ -16,7 +16,7 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-checkpoint = torch.load("./ckps/localmodel/midtrain_model_01000.pt", map_location=device, weights_only=False)
+checkpoint = torch.load("./ckps/midtrain_model_00099.pt", map_location=device, weights_only=False)
 
 # --- FIX: strip `_orig_mod.` keys if present ---
 state = checkpoint["model_state_dict"]
@@ -39,15 +39,17 @@ print("Model loaded for inference")
 torch.manual_seed(1)
 torch.cuda.manual_seed(1)
 
+special = get_special_tokens()
 
 # generate
 sampler = Sampler(temperature=1.0, top_k=50)
 engine = Engine(model, sampler, use_kv_cache=True)
 
-text = "How are you?"
+text = "What is capital of france?"
+
 idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
 
-token_ids, state = engine.generate(idx, max_new_tokens=50)
+token_ids, state = engine.generate(idx, max_new_tokens=200, stop_token_id=special.assistant_end)
 print(decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer))
 
 # print(tokenizer.decode(token_ids))

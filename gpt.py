@@ -15,6 +15,7 @@ class GPTConfig:
   n_head: int = 12
   n_kv_head: int = 12 // 4
   n_emb: int = 768
+  logit_softcap: float = 15.0
 
   use_rope: bool = True
   use_rmsnorm: bool = True
@@ -216,14 +217,24 @@ class GPTModel(nn.Module):
 
     self.lm_head = nn.Linear(config.n_emb, config.vocab_size, bias=False)
 
-    self.lm_head.weight = self.transformer.wte.weight
+    # using 0.9 to not drift to extreme values. other option is clamping
+    self.resid_lambdas = nn.Parameter(torch.full((config.n_layer,) ,0.9))
+
+    # not tying weights to use different optimizers
+    # self.lm_head.weight = self.transformer.wte.weight
 
     self.apply(self._init_weights)
 
   def _init_weights(self, module):
     if isinstance(module, nn.Linear):
+        std = 0.02
+
+        # smaller init for lm_head
+        if module is self.lm_head:
+            std = 0.001
+
         # normal init for GPT2
-        torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        torch.nn.init.normal_(module.weight, mean=0.0, std=std)
         if module.bias is not None:
             torch.nn.init.zeros_(module.bias)
 
@@ -231,7 +242,7 @@ class GPTModel(nn.Module):
         torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     # GPT-2 has special residual projections scaled by 1 / sqrt(2*n_layer)
-    if isinstance(module, nn.Linear) and hasattr(module, "residual_proj"):
+    if isinstance(module, nn.Linear) and hasattr(module, "residual_proj") and module is not self.lm_head:
         torch.nn.init.normal_(module.weight, mean=0.0, std=0.02 / math.sqrt(2 * self.config.n_layer))
 
   def forward(self, idx, targets=None, kv_cache=None):
@@ -246,10 +257,13 @@ class GPTModel(nn.Module):
     x = norm(x, use_rms=self.config.use_rmsnorm)
     
     for layer_idx, block in enumerate(self.transformer.h): # B, T, C
+      x = x * self.resid_lambdas[layer_idx] # using resid_lambda to scale residuals (doing it here to apply to entire layer including attention)
       x = block(x, cos_sin, kv_cache=kv_cache, layer_idx=layer_idx)
 
     x = norm(x, use_rms=self.config.use_rmsnorm)
     logits = self.lm_head(x) # B, T, C (vocab_size)
+    # apply logit softcap, this is helpful with untied weights and split optims
+    logits = self.config.logit_softcap * torch.tanh(logits / self.config.logit_softcap)
 
     loss = None
     if targets is not None:
@@ -310,24 +324,78 @@ class GPTModel(nn.Module):
     return idx
 
 
-def configure_optimizer(model, lr):
-  decay, no_decay = [], []
-  for name, p in model.named_parameters():
-    if not p.requires_grad:
-      continue
-    if p.dim() >= 2:
-      decay.append(p)
-    else:
-      no_decay.append(p)
+def get_param_groups(model):
+  embed_params = []
+  lm_head_params = []
+  matrix_params = []
+  scalar_params = []
 
-  optim_params = [
-      { "params": decay, "weight_decay": 0.1 },
-      { "params": no_decay, "weight_decay": 0.0 }
+  for name, p in model.named_parameters():
+      if not p.requires_grad:
+          continue
+
+      if name == "resid_lambdas":
+          scalar_params.append(p)
+      elif "transformer.wte" in name:
+          embed_params.append(p)
+      elif "lm_head" in name:
+          lm_head_params.append(p)
+      elif p.dim() >= 2:
+          matrix_params.append(p)
+      else:
+          scalar_params.append(p)
+
+  return embed_params, lm_head_params, matrix_params, scalar_params
+
+
+def configure_optimizer(model):
+  embed, lm_head, matrix, scalar = get_param_groups(model)
+
+  optim_groups = [
+    # embeddings (higher LR, no weight decay)
+    {"params": embed, "lr": 3e-4, "weight_decay": 0.0, "name": "embed"},
+
+    # lm_head (slightly lower LR)
+    {"params": lm_head, "lr": 1e-4, "weight_decay": 0.0, "name": "lm_head"},
+
+    # transformer matrices (main bulk)
+    {"params": matrix, "lr": 1e-4, "weight_decay": 0.1, "name": "matrix"},
+
+    # scalars / norms (very conservative)
+    {"params": scalar, "lr": 5e-5, "weight_decay": 0.0, "name": "scalar"},
   ]
 
-  try:
-    optimizer = torch.optim.AdamW(optim_params, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=True)
-  except TypeError:
-    optimizer = torch.optim.AdamW(optim_params, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=False)
+  optimizer = torch.optim.AdamW(
+      optim_groups,
+      betas=(0.9, 0.95),
+      eps=1e-8,
+      fused=torch.cuda.is_available(),
+  )
 
+  for group in optimizer.param_groups:
+    group["initial_lr"] = group["lr"]
+  
   return optimizer
+
+# commenting in favor of split optimizers 
+# def configure_optimizer(model, lr):
+#   decay, no_decay = [], []
+#   for name, p in model.named_parameters():
+#     if not p.requires_grad:
+#       continue
+#     if p.dim() >= 2:
+#       decay.append(p)
+#     else:
+#       no_decay.append(p)
+
+#   optim_params = [
+#       { "params": decay, "weight_decay": 0.1 },
+#       { "params": no_decay, "weight_decay": 0.0 }
+#   ]
+
+#   try:
+#     optimizer = torch.optim.AdamW(optim_params, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=True)
+#   except TypeError:
+#     optimizer = torch.optim.AdamW(optim_params, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=False)
+
+#   return optimizer

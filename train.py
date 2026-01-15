@@ -14,7 +14,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-from utils import get_lr, print0, save_checkpoint
+from utils import get_lr, get_lr_multiplier, print0, save_checkpoint
 
 
 # distributed data parallel setup
@@ -66,19 +66,18 @@ model = model.to(device)
 orig_model = model # for saving checkpoints and sampling
 # model = torch.compile(model, dynamic=False)
 
+# initiatlize the optimizer
+optimizer = configure_optimizer(model)
+
 # wrap the model in ddp
 if ddp:
   model = DDP(model, device_ids=[ddp_local_rank])
 
-
-# initiatlize the optimizer
-optimizer = configure_optimizer(model, lr=3e-4)
 print0(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
 
-
 # Hyper parameters
-max_lr = 6e-4
-min_lr = max_lr * 0.1
+# max_lr = 6e-4
+# min_lr = max_lr * 0.1
 warmup_steps = 20
 max_steps = 500 # 19073 # 10B / 524288
 
@@ -126,7 +125,7 @@ for step in range(1, max_steps):
     if master_process and send_to_wandb:
       wandb_run.log(
           {
-              "val/loss": loss_accum.item()
+              "val/loss": val_loss_accum.item()
           },
           step=step,
       )
@@ -177,9 +176,16 @@ for step in range(1, max_steps):
   norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
   # get learning rate
-  lr = get_lr(step, max_lr, min_lr, warmup_steps, max_steps)
+  # lr = get_lr(step, max_lr, min_lr, warmup_steps, max_steps)
+  # for pg in optimizer.param_groups:
+  #   pg["lr"] = lr
+  lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.1)
+  lr_logs = { "lr/multiplier": lrm, }
   for pg in optimizer.param_groups:
-    pg["lr"] = lr
+      pg["lr"] = pg["initial_lr"] * lrm
+      # for logging
+      name = pg.get("name", "unknown")
+      lr_logs[f"lr/{name}"] = pg["lr"]
 
   # update
   optimizer.step()
@@ -194,17 +200,18 @@ for step in range(1, max_steps):
   avg_time_per_step = total_time / step
   remaining_steps = max_steps - step
   eta_seconds = remaining_steps * avg_time_per_step
-  print0(f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | lr {lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}")
+  matrix_lr = lr_logs["lr/matrix"]
+  print0(f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}")
 
   if master_process and send_to_wandb:
     wandb_run.log(
         {
             "train/loss": loss_accum.item(),
             "train/grad_norm": norm.item(),
-            "train/lr": lr,
+            
+            **lr_logs,
 
             "perf/tok_per_sec": tok_sec,
-
             "progress/total_time": total_time,
             "progress/total_tokens": total_tokens,
         },

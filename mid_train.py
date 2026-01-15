@@ -1,6 +1,6 @@
 from contextlib import nullcontext
 from datetime import datetime
-from dataloader_midtrain import midtraining_loader
+from dataloader_midtrain_bos import midtraining_loader_bos
 from gpt import GPTConfig, GPTModel, configure_optimizer
 from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
 import torch
@@ -71,14 +71,12 @@ model, _, _, _ = load_from_checkpoint(model, checkpoint, device)
 orig_model = model # for saving checkpoints and sampling
 # model = torch.compile(model, dynamic=False)
 
+# initiatlize the optimizer
+optimizer = configure_optimizer(model)
+
 # wrap the model in ddp
 if ddp:
   model = DDP(model, device_ids=[ddp_local_rank])
-
-# initiatlize the optimizer
-optimizer = configure_optimizer(model, lr=1e-4)
-for pg in optimizer.param_groups:
-  pg["initial_lr"] = pg["lr"]
 
 if master_process:
   print(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
@@ -106,7 +104,7 @@ train_task = TaskMixture([
     Arc(), Arc()
 ])
 
-train_loader = midtraining_loader(
+train_loader = midtraining_loader_bos(
     tokenizer,
     train_task,
     batch_size=B, seq_len=T,
@@ -114,21 +112,21 @@ train_loader = midtraining_loader(
 )
 
 val_loaders = {
-  "smoltalk": midtraining_loader(
+  "smoltalk": midtraining_loader_bos(
     tokenizer,
     TaskMixture([SmolTalkTask(split="test")]),
     batch_size=B,seq_len=T, 
     device=device, ddp_rank=ddp_rank,ddp_world_size=ddp_world_size
   ),
-  "mmlu": midtraining_loader(
+  "mmlu": midtraining_loader_bos(
     tokenizer,
     TaskMixture([MMLU(subset="all", split="test")]),
     batch_size=B,seq_len=T, 
     device=device, ddp_rank=ddp_rank,ddp_world_size=ddp_world_size
   ),
-  "gsm8k": midtraining_loader(
+  "gsm8k": midtraining_loader_bos(
     tokenizer,
-    TaskMixture([GSM8K(split="train")]),
+    TaskMixture([GSM8K(split="test")]),
     batch_size=B,seq_len=T, 
     device=device, ddp_rank=ddp_rank,ddp_world_size=ddp_world_size
   ),
@@ -139,8 +137,14 @@ total_tokens = 0
 step = 0
 
 def get_lr_multiplier(progress):
-    # first 80% of training: no decay, then linearly ramp down to 0.
-    return 1 if progress < 0.8 else 1 - (progress - 0.8) / 0.2
+    # clamp progress to [0, 1]
+    progress = min(max(progress, 0.0), 1.0)
+
+    # first 80%: flat LR, last 20%: linear decay to zero
+    if progress < 0.8:
+        return 1.0
+    else:
+        return max(1.0 - (progress - 0.8) / 0.2, 0.0)
 
 print0(f"\nStarting Mid-Training ({datetime.now()})")
 
@@ -220,10 +224,12 @@ for step in range(max_steps):
   # get learning rate
   progress = step / max_steps
   lrm = get_lr_multiplier(progress)
-  lr_comp = 0.0
+  lr_logs = { "lr/multiplier": lrm, }
   for pg in optimizer.param_groups:
     pg["lr"] = pg["initial_lr"] * lrm
-    lr_comp = pg["lr"]
+    # for logging
+    name = pg.get("name", "unknown")
+    lr_logs[f"lr/{name}"] = pg["lr"]
 
   # update
   optimizer.step()
@@ -241,7 +247,8 @@ for step in range(max_steps):
         {
             "train/loss": loss_accum.item(),
             "train/grad_norm_clipped": clipped_norm.item(),
-            "train/lr": lr_comp,
+            
+            **lr_logs,
 
             "perf/tok_per_sec": tok_sec,
 

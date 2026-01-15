@@ -68,6 +68,18 @@ def get_lr(it, max_lr, min_lr, warmup_steps, max_steps):
   return min_lr + coeff * (max_lr - min_lr)
 
 
+def get_lr_multiplier(step, warmup_steps, max_steps, min_lr_frac):
+    if step < warmup_steps:
+        return (step + 1) / max(1, warmup_steps)
+
+    if step >= max_steps:
+        return min_lr_frac
+
+    progress = (step - warmup_steps) / (max_steps - warmup_steps)
+    cosine = 0.5 * (1 + math.cos(math.pi * progress))
+    return min_lr_frac + cosine * (1 - min_lr_frac)
+
+
 
 def sample_from_model(model, tokenizer, device, context, max_tokens):
     # generate

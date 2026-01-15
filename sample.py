@@ -8,6 +8,18 @@ import torch.nn.functional as F
 import math
 import tiktoken
 
+# ANSI color codes for terminal
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    END = '\033[0m'
+
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
@@ -16,9 +28,9 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-checkpoint = torch.load("./ckps/midtrain_model_00099.pt", map_location=device, weights_only=False)
+checkpoint = torch.load("./ckps/fw/midtrain_model_00999_2.pt", map_location=device, weights_only=False)
 
-# --- FIX: strip `_orig_mod.` keys if present ---
+# Strip `_orig_mod.` prefix from state dict keys if present
 state = checkpoint["model_state_dict"]
 fixed_state = {}
 
@@ -34,34 +46,49 @@ model.load_state_dict(fixed_state, strict=True)
 model.to(device)
 model.eval()
 
-print("Model loaded for inference")
-
-torch.manual_seed(1)
-torch.cuda.manual_seed(1)
+print(f"{Colors.GREEN}{Colors.BOLD}Model loaded for inference{Colors.END}")
 
 special = get_special_tokens()
 
-# generate
-sampler = Sampler(temperature=1.0, top_k=50)
-engine = Engine(model, sampler, use_kv_cache=True)
+# Configuration for sampling
+prompts = [
+    "Why is sky blue?",
+    "What is the capital of France?",
+    "Explain how photosynthesis works.",
+    "Write a short poem about winter.",
+    "What are the benefits of exercise?"
+]
 
-text = "What is capital of france?"
+max_new_tokens = 200
+temperature = 1.0
+top_k = 50
 
-idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
+print(f"\n{Colors.CYAN}{Colors.BOLD}Generating samples for {len(prompts)} prompts{Colors.END}\n")
+print(f"{Colors.YELLOW}{'=' * 80}{Colors.END}")
 
-token_ids, state = engine.generate(idx, max_new_tokens=200, stop_token_id=special.assistant_end)
-print(decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer))
+# Generate sample for each prompt
+for i, text in enumerate(prompts):
+    # Set seed for reproducibility
+    torch.manual_seed(1337 + i)
+    torch.cuda.manual_seed(1337 + i)
+    
+    # Create sampler and engine
+    sampler = Sampler(temperature=temperature, top_k=top_k)
+    engine = Engine(model, sampler, use_kv_cache=True)
+    
+    # Encode prompt
+    idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
+    
+    # Generate tokens
+    token_ids, state = engine.generate(idx, max_new_tokens=max_new_tokens, stop_token_id=special.assistant_end)
+    
+    # Decode and print result
+    decoded_text = decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer)
+    
+    print(f"\n{Colors.BLUE}{Colors.BOLD}Prompt {i + 1}:{Colors.END} {Colors.HEADER}{text}{Colors.END}")
+    print(f"{Colors.CYAN}{'-' * 80}{Colors.END}")
+    print(decoded_text)
+    print(f"{Colors.CYAN}{'-' * 80}{Colors.END}")
 
-# print(tokenizer.decode(token_ids))
-
-
-
-# step: 19068 | loss: 3.0779 | lr 6.0000e-05 | norm 0.2802 | time: 358.64ms | tok-sec: 1461880.33
-# step: 19069 | loss: 3.0880 | lr 6.0000e-05 | norm 0.2880 | time: 359.01ms | tok-sec: 1460383.29
-# step: 19070 | loss: 3.0448 | lr 6.0000e-05 | norm 0.2921 | time: 359.05ms | tok-sec: 1460215.53
-# step: 19071 | loss: 3.0554 | lr 6.0000e-05 | norm 0.2876 | time: 358.64ms | tok-sec: 1461882.28
-# Validation loss: 3.0655
-# Checkpoint saved at ./ckps/fw_model_19072.pt
-# Checkpoint saved at step 19072
-# step: 19072 | loss: 3.0833 | lr 6.0000e-05 | norm 0.3028 | time: 3540.07ms | tok-sec: 148100.82
-
+print(f"\n{Colors.YELLOW}{'=' * 80}{Colors.END}")
+print(f"{Colors.GREEN}{Colors.BOLD}All samples generated{Colors.END}")

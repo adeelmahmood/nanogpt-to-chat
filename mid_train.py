@@ -1,3 +1,4 @@
+import argparse
 from contextlib import nullcontext
 from datetime import datetime
 from dataloader_midtrain_bos import midtraining_loader_bos
@@ -15,8 +16,36 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-from utils import load_from_checkpoint, print0, sample_from_model, save_checkpoint
+from utils import dataset_defaults, load_from_checkpoint, print0, sample_from_model, save_checkpoint
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # dataset
+    parser.add_argument("--dataset", type=str, choices=["fw", "ts", "tsk"], required=True)
+
+    # model
+    parser.add_argument("--model_depth", type=str, choices=["d12", "d20"], default="d20")
+
+    # batch
+    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
+    parser.add_argument("--total_batch_size", type=int, default=524288)
+
+    # training
+    parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--val_freq", type=int, default=None)
+
+    # paths
+    parser.add_argument("--data_root", type=str, default=None)
+    parser.add_argument("--ckpt_out", type=str, default="./ckps")
+
+    # midtraining only
+    parser.add_argument("--resume_ckpt", type=str, default=None)
+
+    return parser.parse_args()
+
+args = parse_args()
+defaults = dataset_defaults(args.dataset)
 
 # distributed data parallel setup
 ddp = int(os.environ.get("RANK", -1)) != -1
@@ -62,15 +91,22 @@ torch.cuda.manual_seed(1337 + ddp_rank)
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # initialize the model
-config = GPTConfigD20() 
+if args.model_depth == "d12":
+    config = GPTConfig()
+elif args.model_depth == "d20":
+    config = GPTConfigD20()
+else:
+    raise ValueError(f"Unknown model depth: {args.model_depth}")
+
 model = GPTModel(config)
 model = model.to(device)
 
 # load pretrained state for model and optimizer
-checkpoint = "./ckps/model_00499_1768513334.5296981.pt"
+checkpoint = args.resume_ckpt or f"./{args.ckpt_out}/pretrain_{args.dataset}_{args.model_depth}.pt"
 model, _, _, _ = load_from_checkpoint(model, checkpoint, device)
 orig_model = model # for saving checkpoints and sampling
-# model = torch.compile(model, dynamic=False)
+if device_type == "cuda":
+  model = torch.compile(model, dynamic=False)
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(model)
@@ -91,16 +127,29 @@ if master_process:
 
 
 # Hyper parameters
-max_steps = 100 # 5_000
-B = 4
+max_steps = args.max_steps or 1000
+eval_every = (args.val_freq or 10) * max_steps // 100
+B = args.batch_size
 T = config.block_size
-total_batch_size = 1*B*T # 524288
+total_batch_size = args.total_batch_size
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
-sg = False
 
 print0(f"\nB = {B}, T = {T}")
 print0(f"Using gradient accum steps: {gradient_accum_steps}")
 print0(f"Total batch size: {total_batch_size}")
+
+if master_process:
+  print("\n======== RUN CONFIG ========")
+  print(f"dataset        : {args.dataset}")
+  print(f"model_depth    : {args.model_depth}")
+  print(f"batch_size     : {B}")
+  print(f"block_size     : {config.block_size}")
+  print(f"max_steps      : {max_steps}")
+  print(f"eval_every     : {eval_every}")
+  if hasattr(args, "resume_ckpt"):
+      print(f"resume_ckpt    : {args.resume_ckpt}")
+  print("============================\n")
+
 
 # Midtraining datasets
 train_task = TaskMixture([
@@ -158,7 +207,7 @@ for step in range(max_steps):
   last_step = step == max_steps - 1
 
   # validation loss
-  if step > 0 and (step % 10 == 0 or last_step):
+  if step > 0 and (step % eval_every == 0 or last_step):
     model.eval()
     with torch.no_grad():
       val_loss_steps = 10
@@ -184,13 +233,17 @@ for step in range(max_steps):
 
   # save checkpoint
   if last_step and master_process:
+    ckpt_path = os.path.join(
+        args.ckpt_out,
+        f"model_{step:05d}.pt"
+    )
     save_checkpoint(
-        f"./ckps/midtrain_model_{step:05d}.pt",
+        ckpt_path,
         orig_model,
         optimizer,
-        step=step
+        step=step,
+        config=config
     )
-    print(f"Checkpoint saved at step {step}")
 
   if last_step:
     break
@@ -201,7 +254,7 @@ for step in range(max_steps):
   optimizer.zero_grad(set_to_none=True)
   loss_accum = torch.zeros(1, device=device)
 
-  for grad_step in (tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False) if sg else range(gradient_accum_steps)):
+  for grad_step in range(gradient_accum_steps):
     # get a batch
     x, y = next(train_loader)
 

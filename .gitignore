@@ -16,7 +16,11 @@ venv/
 # checkpoints
 ckps
 
-files
+download/edu_fineweb10B
+download/tinystories
+download/tinysk
 runs
 
 wandb
+
+run_params.env

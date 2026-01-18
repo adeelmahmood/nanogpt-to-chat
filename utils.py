@@ -17,7 +17,7 @@ def save_checkpoint(path, model, optimizer, step, config=None):
       "config": config
   }
   torch.save(checkpoint, path)
-  print(f"Checkpoint saved at {path}")
+  print0(f"Checkpoint saved at {path}")
 
 
 def load_from_checkpoint(
@@ -89,9 +89,9 @@ def sample_from_model(model, tokenizer, device, context, max_tokens):
     idx = torch.tensor([tokenizer.encode(context)], dtype=torch.long, device=device)
 
     token_ids, state = engine.generate(idx, max_new_tokens=max_tokens)
-    print(">>>")
-    print(decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer))
-    print(">>>")
+    print0(">>>")
+    print0(decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer))
+    print0(">>>")
 
 
 def render_mcq(question, letters, choices):
@@ -105,3 +105,23 @@ def print0(s="", **kwargs):
   ddp_rank = int(os.environ.get("RANK", 0))
   if ddp_rank == 0:
     print(s, **kwargs)
+
+
+def dataset_defaults(name):
+  if name == "fw":
+      return dict(
+          data_root="download/edu_fineweb10B",
+          max_steps=10_000,
+      )
+  elif name == "ts":
+      return dict(
+          data_root="download/tinystories",
+          max_steps=1_000,
+      )
+  elif name == "tsk":
+      return dict(
+          data_root="download/tinysk",
+          max_steps=500,
+      )
+  else:
+      raise ValueError(name)

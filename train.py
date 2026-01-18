@@ -1,3 +1,4 @@
+import argparse
 from contextlib import nullcontext
 from datetime import datetime
 from dataloader import DataLoaderLite
@@ -14,8 +15,33 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-from utils import get_lr, get_lr_multiplier, print0, save_checkpoint
+from utils import  dataset_defaults, get_lr_multiplier, print0, save_checkpoint
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # dataset
+    parser.add_argument("--dataset", type=str, choices=["fw", "ts", "tsk"], required=True)
+
+    # model
+    parser.add_argument("--model_depth", type=str, choices=["d12", "d20"], default="d20")
+
+    # batch
+    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
+    parser.add_argument("--total_batch_size", type=int, default=524288)
+
+    # training
+    parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--val_freq", type=int, default=None)
+    
+    # paths
+    parser.add_argument("--data_root", type=str, default=None)
+    parser.add_argument("--ckpt_out", type=str, default="./ckps")
+
+    return parser.parse_args()
+
+args = parse_args()
+defaults = dataset_defaults(args.dataset)
 
 # distributed data parallel setup
 ddp = int(os.environ.get("RANK", -1)) != -1
@@ -61,11 +87,18 @@ torch.cuda.manual_seed(1337 + ddp_rank)
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # initialize the model
-config = GPTConfigD20()
+if args.model_depth == "d12":
+    config = GPTConfig()
+elif args.model_depth == "d20":
+    config = GPTConfigD20()
+else:
+    raise ValueError(f"Unknown model depth: {args.model_depth}")
+
 model = GPTModel(config)
 model = model.to(device)
 orig_model = model # for saving checkpoints and sampling
-# model = torch.compile(model, dynamic=False)
+if device_type == "cuda":
+  model = torch.compile(model, dynamic=False)
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(model)
@@ -77,17 +110,16 @@ if ddp:
 print0(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
 
 # Hyper parameters
-# max_lr = 6e-4
-# min_lr = max_lr * 0.1
 warmup_steps = 20
-max_steps = 500 # 19073 # 10B / 524288
+max_steps = args.max_steps or defaults["max_steps"] # 19073 # 10B / 524288
+eval_every =(args.val_freq or 10) * max_steps // 100
 
-B = 4
+B = args.batch_size
 T = config.block_size
-total_batch_size = 1*B*T # 524288
+total_batch_size = args.total_batch_size
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
-data_set_folder = "files/tinysk"
-sg = False
+data_set_folder = args.data_root or defaults["data_root"]
+
 
 print0(f"\nB = {B}, T = {T}")
 print0(f"Using gradient accum steps: {gradient_accum_steps}")
@@ -98,15 +130,29 @@ print0(f"Dataset folder: {data_set_folder}")
 train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="train", data_root=data_set_folder, master_process=master_process)
 val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_root=data_set_folder, master_process=master_process)
 
-total_time = 0
+if master_process:
+  print("\n======== RUN CONFIG ========")
+  print(f"dataset        : {args.dataset}")
+  print(f"data_root      : {data_set_folder}")
+  print(f"model_depth    : {args.model_depth}")
+  print(f"batch_size     : {B}")
+  print(f"block_size     : {config.block_size}")
+  print(f"max_steps      : {max_steps}")
+  print(f"eval_every     : {eval_every}")
+  if hasattr(args, "resume_ckpt"):
+      print(f"resume_ckpt    : {args.resume_ckpt}")
+  print("============================\n")
+
+
+total_time = 0.0
 total_tokens = 0
 print0(f"\nStarting Training ({datetime.now()})")
 
-for step in range(1, max_steps):
+for step in range(max_steps):
   last_step = (step == max_steps -1)
 
   # validation loss
-  if step > 0 and (step % 50 == 0 or last_step):
+  if step > 0 and (step % eval_every == 0 or last_step):
     model.eval()
     val_loader.reset()
     with torch.no_grad():
@@ -134,14 +180,15 @@ for step in range(1, max_steps):
   
   # save checkpoint
   if last_step and master_process:
+    ckpt_name = f"pretrain_{args.dataset}_{args.model_depth}.pt"
+    ckpt_path = os.path.join(args.ckpt_out, ckpt_name)
     save_checkpoint(
-        f"./ckps/model_{step:05d}_{time.time()}.pt",
+        ckpt_path,
         orig_model,
         optimizer,
         step=step,
+        config=config
     )
-    print(f"Checkpoint saved at step {step}")
-
 
   # training
   synchronize()
@@ -149,7 +196,7 @@ for step in range(1, max_steps):
   optimizer.zero_grad(set_to_none=True)
   loss_accum = torch.zeros(1, device=device)
 
-  for grad_step in (tqdm(range(gradient_accum_steps), desc="Grad Steps", leave=False) if sg else range(gradient_accum_steps)):
+  for grad_step in range(gradient_accum_steps):
     # get a batch
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)

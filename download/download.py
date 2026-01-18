@@ -14,11 +14,11 @@ args = parser.parse_args()
 if args.ds == "fw":
     dataset_name = "HuggingFaceFW/fineweb-edu"
     remote_name = "sample-10BT"
-    local_dir = "edu_fineweb10B"
+    local_dir = "download/edu_fineweb10B"
 elif args.ds == "ts":
     dataset_name = "roneneldan/TinyStories"
     remote_name = ""
-    local_dir = "tinystories"
+    local_dir = "download/tinystories"
 else:
     raise ValueError("Invalid dataset choice. Use --ds fw or --ds ts")
 

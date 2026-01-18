@@ -59,6 +59,11 @@ def decode_with_special_tokens(token_ids, tokenizer):
     return "".join(result)
 
 
+def sanitize(text: str) -> str:
+    # Remove GPT-2 control token explicitly
+    text = text.replace("<|endoftext|>", "")
+    return text
+
 def render_conversation(conversation, tokenizer, max_tokens=None):
     special = get_special_tokens()
     ids, masks = [], []
@@ -74,7 +79,7 @@ def render_conversation(conversation, tokenizer, max_tokens=None):
 
     for i, msg in enumerate(conversation["messages"]):
         role = msg["role"]
-        content = msg["content"]
+        content = sanitize(msg["content"])
 
         if role == "user":
             # user messages, dont train on it

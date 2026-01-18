@@ -1,7 +1,7 @@
 from contextlib import nullcontext
 from datetime import datetime
 from dataloader import DataLoaderLite
-from gpt import GPTConfig, GPTModel, configure_optimizer
+from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 import torch
 import time
 import os
@@ -61,7 +61,8 @@ torch.cuda.manual_seed(1337 + ddp_rank)
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # initialize the model
-model = GPTModel(GPTConfig(vocab_size=50304))
+config = GPTConfigD20()
+model = GPTModel(config)
 model = model.to(device)
 orig_model = model # for saving checkpoints and sampling
 # model = torch.compile(model, dynamic=False)
@@ -82,7 +83,7 @@ warmup_steps = 20
 max_steps = 500 # 19073 # 10B / 524288
 
 B = 4
-T = 1024
+T = config.block_size
 total_batch_size = 1*B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
 data_set_folder = "files/tinysk"
@@ -179,7 +180,7 @@ for step in range(1, max_steps):
   # lr = get_lr(step, max_lr, min_lr, warmup_steps, max_steps)
   # for pg in optimizer.param_groups:
   #   pg["lr"] = lr
-  lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.1)
+  lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.05)
   lr_logs = { "lr/multiplier": lrm, }
   for pg in optimizer.param_groups:
       pg["lr"] = pg["initial_lr"] * lrm

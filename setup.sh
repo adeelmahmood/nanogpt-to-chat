@@ -67,6 +67,9 @@ rm -f ~/.netrc
 echo "== Cleanup root caches =="
 rm -rf ~/.cache/{huggingface,wandb,pip} ~/.local/share/wandb || true
 
+cd /mnt/instancestore
+git clone https://github.com/adeelmahmood/nanogpt-to-chat.git
+
 source ~/.bashrc
 
 echo "== Validation =="
@@ -82,3 +85,4 @@ print("NETRC:", os.environ.get("NETRC"))
 EOF
 
 echo "✅ Setup complete. Log out and back in."
+

@@ -1,7 +1,7 @@
 from contextlib import nullcontext
 from datetime import datetime
 from dataloader_midtrain_bos import midtraining_loader_bos
-from gpt import GPTConfig, GPTModel, configure_optimizer
+from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
 import torch
 import time
@@ -62,17 +62,23 @@ torch.cuda.manual_seed(1337 + ddp_rank)
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # initialize the model
-model = GPTModel(GPTConfig(vocab_size=50304))
+config = GPTConfigD20() 
+model = GPTModel(config)
 model = model.to(device)
 
 # load pretrained state for model and optimizer
-checkpoint = "./ckps/model_00499_1768408981.940983.pt"
+checkpoint = "./ckps/model_00499_1768513334.5296981.pt"
 model, _, _, _ = load_from_checkpoint(model, checkpoint, device)
 orig_model = model # for saving checkpoints and sampling
 # model = torch.compile(model, dynamic=False)
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(model)
+
+# scale down learning rates for midtraining
+for pg in optimizer.param_groups:
+    pg["lr"] *= 0.5
+    pg["initial_lr"] *= 0.5
 
 # wrap the model in ddp
 if ddp:
@@ -87,7 +93,7 @@ if master_process:
 # Hyper parameters
 max_steps = 100 # 5_000
 B = 4
-T = 1024
+T = config.block_size
 total_batch_size = 1*B*T # 524288
 gradient_accum_steps = total_batch_size // (B*T*ddp_world_size) # 128 or 32
 sg = False

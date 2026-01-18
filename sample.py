@@ -28,7 +28,7 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-checkpoint = torch.load("./ckps/fw/midtrain_model_00999_2.pt", map_location=device, weights_only=False)
+checkpoint = torch.load("./ckps/midtrain_model_00099.pt", map_location=device, weights_only=False)
 
 # Strip `_orig_mod.` prefix from state dict keys if present
 state = checkpoint["model_state_dict"]

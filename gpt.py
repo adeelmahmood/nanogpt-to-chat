@@ -10,11 +10,28 @@ from dataclasses import dataclass
 @dataclass
 class GPTConfig:
   block_size: int = 1024
-  vocab_size: int = 50257 # 50304
+  vocab_size: int = 50304 # 50257 
   n_layer: int = 12
   n_head: int = 12
   n_kv_head: int = 12 // 4
   n_emb: int = 768
+  logit_softcap: float = 15.0
+
+
+  use_rope: bool = True
+  use_rmsnorm: bool = True
+  use_qk_norm: bool = True
+  use_gqa: bool = True
+  use_kv_cache: bool = True
+
+@dataclass
+class GPTConfigD20:
+  block_size: int = 2048
+  vocab_size: int = 50304 
+  n_layer: int = 20
+  n_head: int = 10
+  n_kv_head: int = 10
+  n_emb: int = 1280
   logit_softcap: float = 15.0
 
   use_rope: bool = True
@@ -352,17 +369,17 @@ def configure_optimizer(model):
   embed, lm_head, matrix, scalar = get_param_groups(model)
 
   optim_groups = [
-    # embeddings (higher LR, no weight decay)
-    {"params": embed, "lr": 3e-4, "weight_decay": 0.0, "name": "embed"},
+    # embeddings: highest LR, no decay
+    {"params": embed,    "lr": 2.0e-3, "weight_decay": 0.0, "name": "embed"},
 
-    # lm_head (slightly lower LR)
-    {"params": lm_head, "lr": 1e-4, "weight_decay": 0.0, "name": "lm_head"},
+    # lm head: slightly lower
+    {"params": lm_head, "lr": 8.0e-4, "weight_decay": 0.0, "name": "lm_head"},
 
-    # transformer matrices (main bulk)
-    {"params": matrix, "lr": 1e-4, "weight_decay": 0.1, "name": "matrix"},
+    # transformer matrices: main bulk
+    {"params": matrix,  "lr": 1.5e-3, "weight_decay": 0.05, "name": "matrix"},
 
-    # scalars / norms (very conservative)
-    {"params": scalar, "lr": 5e-5, "weight_decay": 0.0, "name": "scalar"},
+    # norms / scalars
+    {"params": scalar,  "lr": 2.0e-4, "weight_decay": 0.0, "name": "scalar"},
   ]
 
   optimizer = torch.optim.AdamW(

@@ -33,7 +33,8 @@ def parse_args():
 
     # training
     parser.add_argument("--max_steps", type=int, default=None)
-    parser.add_argument("--val_freq", type=int, default=None)
+    parser.add_argument("--eval_every", type=int, default=None)
+    parser.add_argument("--save_every", type=int, default=None)
 
     # paths
     parser.add_argument("--data_root", type=str, default=None)
@@ -128,7 +129,6 @@ if master_process:
 
 # Hyper parameters
 max_steps = args.max_steps or 1000
-eval_every = (args.val_freq or 10) * max_steps // 100
 B = args.batch_size
 T = config.block_size
 total_batch_size = args.total_batch_size
@@ -145,7 +145,8 @@ if master_process:
   print(f"batch_size     : {B}")
   print(f"block_size     : {config.block_size}")
   print(f"max_steps      : {max_steps}")
-  print(f"eval_every     : {eval_every}")
+  print(f"eval_every     : {args.eval_every}")
+  print(f"save_every     : {args.save_every}")
   if hasattr(args, "resume_ckpt"):
       print(f"resume_ckpt    : {args.resume_ckpt}")
   print("============================\n")
@@ -207,7 +208,7 @@ for step in range(max_steps):
   last_step = step == max_steps - 1
 
   # validation loss
-  if step > 0 and (step % eval_every == 0 or last_step):
+  if step > 0 and (step % args.eval_every == 0 or last_step):
     model.eval()
     with torch.no_grad():
       val_loss_steps = 10
@@ -232,7 +233,7 @@ for step in range(max_steps):
     model.train()
 
   # save checkpoint
-  if last_step and master_process:
+  if step % args.save_every == 0 and master_process:
     ckpt_path = os.path.join(
         args.ckpt_out,
         f"model_{step:05d}.pt"

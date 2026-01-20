@@ -12,7 +12,7 @@ if [[ -f "$PARAM_FILE" ]]; then
   source "$PARAM_FILE"
 else
   echo "=============================="
-  echo " TRAINING PIPELINE SETUP "
+  echo " PRE-TRAINING SETUP "
   echo "=============================="
   echo
 
@@ -28,17 +28,28 @@ else
   read -p "Total batch size [524288]: " TOTAL_BATCH_SIZE
   TOTAL_BATCH_SIZE=${TOTAL_BATCH_SIZE:-524288}
 
-  read -p "Pretraining max steps (Enter = dataset default (fw: 20000, ts: 1000, tsk: 500)): " TRAIN_STEPS
+  read -p "Max steps (Enter = dataset default (fw: 20000, ts: 1000, tsk: 500)): " TRAIN_STEPS
   TRAIN_STEPS=${TRAIN_STEPS:-1000}
 
-  read -p "Midtraining max steps [1000]: " MID_STEPS
-  MID_STEPS=${MID_STEPS:-1000}
+  read -p "Eval Every [$(($TRAIN_STEPS/10))]: " EVAL_EVERY
+  EVAL_EVERY=${EVAL_EVERY:-$((TRAIN_STEPS/10))}
 
-  read -p "Validation Frequency % [10]: " VAL_FREQ
-  VAL_FREQ=${VAL_FREQ:-10}
+  read -p "Save Every [$(($TRAIN_STEPS/25))]: " SAVE_EVERY
+  SAVE_EVERY=${SAVE_EVERY:-$((TRAIN_STEPS/25))}
 
   read -p "Checkpoint directory [./ckps]: " CKPT_DIR
   CKPT_DIR=${CKPT_DIR:-./ckps}
+
+  echo "=============================="
+  echo " MID-TRAINING SETUP "
+  echo "=============================="
+  echo
+
+  read -p "Max steps [1000]: " MID_STEPS
+  MID_STEPS=${MID_STEPS:-1000}
+
+  read -p "Eval Every [$(($TRAIN_STEPS/10))]: " MID_EVAL_EVERY
+  MID_EVAL_EVERY=${MID_EVAL_EVERY:-$((TRAIN_STEPS/10))}
 
   ############################################
   # SAVE PARAMETERS
@@ -51,7 +62,9 @@ BATCH_SIZE=$BATCH_SIZE
 TOTAL_BATCH_SIZE=$TOTAL_BATCH_SIZE
 TRAIN_STEPS=$TRAIN_STEPS
 MID_STEPS=$MID_STEPS
-VAL_FREQ=$VAL_FREQ
+EVAL_EVERY=$EVAL_EVERY
+SAVE_EVERY=$SAVE_EVERY
+MID_EVAL_EVERY=$MID_EVAL_EVERY
 CKPT_DIR=$CKPT_DIR
 EOF
 
@@ -86,7 +99,8 @@ TRAIN_CMD=(
   --batch_size "$BATCH_SIZE"
   --total_batch_size "$TOTAL_BATCH_SIZE"
   --max_steps "$TRAIN_STEPS"
-  --val_freq "$VAL_FREQ"
+  --eval_every "$EVAL_EVERY"
+  --save_every "$SAVE_EVERY"
   --ckpt_out "$CKPT_DIR"
 )
 
@@ -119,7 +133,8 @@ MID_CMD=(
   --total_batch_size "$TOTAL_BATCH_SIZE"
   --resume_ckpt "$PRETRAIN_CKPT"
   --max_steps "$MID_STEPS"
-  --val_freq "$VAL_FREQ"    
+  --eval_every "$MID_EVAL_EVERY"
+  --save_every "$SAVE_EVERY"
   --ckpt_out "$CKPT_DIR"
 )
 

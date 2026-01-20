@@ -27,6 +27,17 @@ class DataLoaderLite:
             print(f"found {len(shards)} shards for {data_root} in {split} split")
         self.reset()
 
+    def state_dict(self):
+        return {
+            "current_shard": self.current_shard,
+            "current_position": self.current_position
+        }
+
+    def load_state_dict(self, state_dict):
+        self.current_shard = state_dict["current_shard"]
+        self.tokens = load_tokens(self.shards[self.current_shard])
+        self.current_position = state_dict["current_position"]
+
     def reset(self):
         # state, init at shard zero
         self.current_shard = 0
@@ -41,7 +52,7 @@ class DataLoaderLite:
         # advance the position in the tensor
         self.current_position += B * T * self.num_processes
         # if loading the next batch would be out of bounds, advance to next shard
-        if self.current_position + (B * T * self.num_processes + 1) > len(self.tokens):
+        if self.current_position + (B * T + 1) > len(self.tokens):
             self.current_shard = (self.current_shard + 1) % len(self.shards)
             self.tokens = load_tokens(self.shards[self.current_shard])
             self.current_position = B * T * self.process_rank

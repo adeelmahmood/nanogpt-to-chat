@@ -1,58 +1,80 @@
 import os
 from chat import decode_with_special_tokens
 from engine import Engine, Sampler
-from gpt import GPTConfig, GPTModel
 import torch
 import math
 
-def save_checkpoint(path, model, optimizer, step, config=None):
-  # make the directory if it doesn't exist
+def save_checkpoint(
+    path: str,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    step: int,
+    config=None,
+    train_loader=None,
+    val_loader=None,
+):
   os.makedirs(os.path.dirname(path), exist_ok=True)
 
-  # save the checkpoint
-  checkpoint = {
-      "model_state_dict": model.state_dict(),
-      "optimizer_state_dict": optimizer.state_dict(),
-      "step": step,
-      "config": config
+  ckpt = {
+    "model_state_dict": model.state_dict(),
+    "optimizer_state_dict": optimizer.state_dict(),
+    "step": int(step),
+    "config": config,
+    # RNG
+    "rng_state": {
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+    },
+    # Data loader state
+    "train_loader_state": train_loader.state_dict() if train_loader is not None else None,
+    "val_loader_state": val_loader.state_dict() if val_loader is not None else None,
   }
-  torch.save(checkpoint, path)
+
+  torch.save(ckpt, path)
   print0(f"Checkpoint saved at {path}")
 
 
-def load_from_checkpoint(
-    model,
-    ckp_path,
-    device,
-    optimizer=None,
-    strict=True,
+def load_checkpoint(
+    path: str,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer | None,
+    device: str,
+    strict: bool = True,
 ):
-    # Load checkpoint
-    checkpoint = torch.load(
-        ckp_path,
-        map_location=device,
-        weights_only=False,
-    )
+  ckpt = torch.load(path, map_location=device, weights_only=False)
 
-    # Load model state
-    model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
-    model.to(device)
+  # Model
+  model.load_state_dict(ckpt["model_state_dict"], strict=strict)
+  model.to(device)
 
-    # Load optimizer state if provided
-    if optimizer is not None and "optimizer_state_dict" in checkpoint:
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+  # Optimizer
+  if optimizer is not None and "optimizer_state_dict" in ckpt and ckpt["optimizer_state_dict"] is not None:
+    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+    # Move optimizer state tensors to device
+    for state in optimizer.state.values():
+      for k, v in state.items():
+        if torch.is_tensor(v):
+            state[k] = v.to(device)
 
-        # Ensure optimizer tensors are on the correct device
-        for state in optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = v.to(device)
+  step = int(ckpt.get("step", -1))
+  return ckpt, step
 
-    step = checkpoint.get("step", 0)
-    config = checkpoint.get("config", None)
 
-    return model, optimizer, step, config
-  
+def restore_rng(ckpt: dict):
+  rng = ckpt.get("rng_state", None)
+  if rng is None:
+      return
+
+  try:
+    torch.set_rng_state(rng["torch"])
+  except Exception:
+    pass
+  if torch.cuda.is_available() and rng.get("cuda", None) is not None:
+    try:
+      torch.cuda.set_rng_state_all(rng["cuda"])
+    except Exception:
+      pass
+
 
 def get_lr(it, max_lr, min_lr, warmup_steps, max_steps):
   # 1) linear warmup for warm_iter steps

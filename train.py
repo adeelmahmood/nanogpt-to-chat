@@ -159,6 +159,7 @@ def main():
 
   # Finalize the model
   if device_type == "cuda":
+    print0("Compiling model")
     model = torch.compile(model, dynamic=False)
   if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])  

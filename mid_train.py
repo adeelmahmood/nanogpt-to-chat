@@ -112,6 +112,7 @@ orig_model = model # for saving checkpoints and sampling
 optimizer = configure_optimizer(model)
 
 if device_type == "cuda":
+  print0("Compiling model")
   model = torch.compile(model, dynamic=False)
 
 # wrap the model in ddp

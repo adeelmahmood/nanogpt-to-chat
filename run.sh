@@ -89,11 +89,49 @@ fi
 # PRETRAIN
 ############################################
 
+# PRETRAIN RESUME LOGIC
+
+# Find latest in-progress checkpoint (pretrain_*_NNNNN.pt)
+LATEST_PRETRAIN_CKPT=$(
+  ls -1 "${CKPT_DIR}/pretrain_${DATASET}_${MODEL_DEPTH}_"*.pt 2>/dev/null \
+  | sort \
+  | tail -n 1
+)
+
+RESUME_ARGS=()
+
+if [[ -n "$LATEST_PRETRAIN_CKPT" ]]; then
+  if [[ -t 0 ]]; then
+    read -p "Resume pretraining from checkpoint $(basename "$LATEST_PRETRAIN_CKPT")? [Y/n]: " RESUME_CONFIRM
+    RESUME_CONFIRM=${RESUME_CONFIRM:-Y}
+  else
+    RESUME_CONFIRM="Y"
+  fi
+
+  if [[ "$RESUME_CONFIRM" == "Y" || "$RESUME_CONFIRM" == "y" ]]; then
+    RESUME_ARGS=(--resume_ckpt "$LATEST_PRETRAIN_CKPT")
+  fi
+fi
+
+
+# Launcher command
+
+NPROC_PER_NODE=${NPROC_PER_NODE:-1}
+if [[ "$NPROC_PER_NODE" -gt 1 ]]; then
+  PYTHON_CMD=(
+    torchrun
+    --standalone
+    --nproc_per_node=1
+  )
+else
+  PYTHON_CMD=(python)
+fi
+
 echo
 echo "Starting pretraining..."
 
 TRAIN_CMD=(
-  python train.py
+  "${PYTHON_CMD[@]}" train.py
   --dataset "$DATASET"
   --model_depth "$MODEL_DEPTH"
   --batch_size "$BATCH_SIZE"
@@ -102,13 +140,12 @@ TRAIN_CMD=(
   --eval_every "$EVAL_EVERY"
   --save_every "$SAVE_EVERY"
   --ckpt_out "$CKPT_DIR"
+  "${RESUME_ARGS[@]}"
 )
 
 "${TRAIN_CMD[@]}"
 
-############################################
 # PRETRAIN CHECKPOINT
-############################################
 
 PRETRAIN_CKPT="${CKPT_DIR}/pretrain_${DATASET}_${MODEL_DEPTH}.pt"
 
@@ -126,7 +163,7 @@ echo
 echo "Starting midtraining..."
 
 MID_CMD=(
-  python mid_train.py
+  "${PYTHON_CMD[@]}" mid_train.py
   --dataset "$DATASET"
   --model_depth "$MODEL_DEPTH"
   --batch_size "$BATCH_SIZE"

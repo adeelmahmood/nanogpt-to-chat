@@ -20,10 +20,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # dataset
-    parser.add_argument("--dataset", type=str, choices=["fw", "ts", "tsk"], required=True)
+    parser.add_argument("--dataset", type=str, choices=["fw", "ts", "tsk"], default="tsk")
 
     # model
-    parser.add_argument("--model_depth", type=str, choices=["d12", "d20"], default="d20")
+    parser.add_argument("--model_depth", type=str, choices=["d12", "d20"], default="d12")
 
     # batch
     parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
@@ -188,7 +188,7 @@ def main():
     last_step = (step == max_steps - 1)
 
     # validation loss
-    if args.eval_every > 0 and step > start_step and (step % args.eval_every == 0 or last_step):
+    if args.eval_every and step > start_step and (step % args.eval_every == 0 or last_step):
       model.eval()
       # val_loader.reset()
       with torch.no_grad():
@@ -215,8 +215,8 @@ def main():
       model.train()
     
     # save checkpoint
-    if master_process and (last_step or (args.save_every > 0 and step > start_step and step % args.save_every == 0)):
-      ckpt_name = f"pretrain_{args.dataset}_{args.model_depth}.pt"
+    if master_process and (last_step or (args.save_every and step > start_step and step % args.save_every == 0)):
+      ckpt_name = f"pretrain_{args.dataset}_{args.model_depth}.pt" if last_step else f"pretrain_{args.dataset}_{args.model_depth}_{step:05d}.pt"
       ckpt_path = os.path.join(args.ckpt_out, ckpt_name)
       save_checkpoint(
           ckpt_path,

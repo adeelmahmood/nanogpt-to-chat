@@ -38,6 +38,13 @@ def tokenize(doc):
     return tokens_np
 
 def main():
+    # check if files already there
+    existing_shards = [f for f in os.listdir(local_dir) if f.endswith(".npy")]
+    if existing_shards:
+        print(f"Found {len(existing_shards)} existing shards in {local_dir}")
+        print("Skipping download.")
+        return
+
     # download dataset inside main
     ds = load_dataset(dataset_name, name=remote_name, split="train")
 

@@ -16,16 +16,16 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-from utils import dataset_defaults, load_from_checkpoint, print0, sample_from_model, save_checkpoint
+from utils import dataset_defaults, load_checkpoint, print0, sample_from_model, save_checkpoint
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
     # dataset
-    parser.add_argument("--dataset", type=str, choices=["fw", "ts", "tsk"], required=True)
+    parser.add_argument("--dataset", type=str, choices=["fw", "ts", "tsk"], default="tsk")
 
     # model
-    parser.add_argument("--model_depth", type=str, choices=["d12", "d20"], default="d20")
+    parser.add_argument("--model_depth", type=str, choices=["d12", "d20"], default="d12")
 
     # batch
     parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
@@ -99,27 +99,30 @@ elif args.model_depth == "d20":
 else:
     raise ValueError(f"Unknown model depth: {args.model_depth}")
 
-model = GPTModel(config)
-model = model.to(device)
+# Initialize the model
+model = GPTModel(config).to(device)
 
-# load pretrained state for model and optimizer
+# Load pretrained state for model and optimizer
 checkpoint = args.resume_ckpt or f"./{args.ckpt_out}/pretrain_{args.dataset}_{args.model_depth}.pt"
-model, _, _, _ = load_from_checkpoint(model, checkpoint, device)
+ckpt, _ = load_checkpoint(path=checkpoint, model=model, optimizer=None, device=device)
+
 orig_model = model # for saving checkpoints and sampling
-if device_type == "cuda":
-  model = torch.compile(model, dynamic=False)
 
 # initiatlize the optimizer
 optimizer = configure_optimizer(model)
+
+if device_type == "cuda":
+  model = torch.compile(model, dynamic=False)
+
+# wrap the model in ddp
+if ddp:
+  model = DDP(model, device_ids=[ddp_local_rank])
 
 # scale down learning rates for midtraining
 for pg in optimizer.param_groups:
     pg["lr"] *= 0.5
     pg["initial_lr"] *= 0.5
 
-# wrap the model in ddp
-if ddp:
-  model = DDP(model, device_ids=[ddp_local_rank])
 
 if master_process:
   print(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
@@ -208,7 +211,7 @@ for step in range(max_steps):
   last_step = step == max_steps - 1
 
   # validation loss
-  if step > 0 and (step % args.eval_every == 0 or last_step):
+  if args.eval_every and step > 0 and (step % args.eval_every == 0 or last_step):
     model.eval()
     with torch.no_grad():
       val_loss_steps = 10
@@ -233,10 +236,10 @@ for step in range(max_steps):
     model.train()
 
   # save checkpoint
-  if step % args.save_every == 0 and master_process:
+  if master_process and (last_step or (args.save_every and step > 0 and step % args.save_every == 0)):
     ckpt_path = os.path.join(
         args.ckpt_out,
-        f"model_{step:05d}.pt"
+        f"model_{step:05d}.pt" if not last_step else f"model.pt"
     )
     save_checkpoint(
         ckpt_path,

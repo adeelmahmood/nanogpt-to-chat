@@ -216,7 +216,8 @@ def main():
     
     # save checkpoint
     if master_process and (last_step or (args.save_every and step > start_step and step % args.save_every == 0)):
-      ckpt_name = f"pretrain_{args.dataset}_{args.model_depth}.pt" if last_step else f"pretrain_{args.dataset}_{args.model_depth}_{step:05d}.pt"
+      ckp_prefix = f"pretrain_{args.dataset}_{args.model_depth}"
+      ckpt_name = f"{ckp_prefix}.pt" if last_step else f"{ckp_prefix}_{step:05d}.pt"
       ckpt_path = os.path.join(args.ckpt_out, ckpt_name)
       save_checkpoint(
           ckpt_path,

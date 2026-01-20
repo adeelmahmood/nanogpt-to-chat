@@ -236,10 +236,10 @@ for step in range(max_steps):
     model.train()
 
   # save checkpoint
-  if master_process and (last_step or (args.save_every and step > 0 and step % args.save_every == 0)):
+  if master_process and last_step:
     ckpt_path = os.path.join(
         args.ckpt_out,
-        f"model_{step:05d}.pt" if not last_step else f"model.pt"
+        f"mid-train_{args.dataset}_{args.model_depth}.pt"
     )
     save_checkpoint(
         ckpt_path,

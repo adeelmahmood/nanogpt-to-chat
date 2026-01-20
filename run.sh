@@ -121,7 +121,7 @@ if [[ "$NPROC_PER_NODE" -gt 1 ]]; then
   PYTHON_CMD=(
     torchrun
     --standalone
-    --nproc_per_node=1
+    --nproc_per_node="$NPROC_PER_NODE"
   )
 else
   PYTHON_CMD=(python)

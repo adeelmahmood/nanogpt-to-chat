@@ -216,7 +216,7 @@ def main():
       model.train()
     
     # save checkpoint
-    if master_process and (last_step or (args.save_every and step > start_step and step % args.save_every == 0)):
+    if master_process and (last_step or (args.save_every and args.save_every != -1 and step > start_step and step % args.save_every == 0)):
       ckp_prefix = f"pretrain_{args.dataset}_{args.model_depth}"
       ckpt_name = f"{ckp_prefix}.pt" if last_step else f"{ckp_prefix}_{step:05d}.pt"
       ckpt_path = os.path.join(args.ckpt_out, ckpt_name)
@@ -309,7 +309,13 @@ def main():
           step=step,
       )
 
-  print("Training completed", datetime.now())
+  print0(f"Training completed {datetime.now()}")
+
+  # Delete all step checkpoints
+  print0("Deleting step checkpoints as training has completed")
+  for f in os.listdir(args.ckpt_out):
+    if f.startswith(f"pretrain_{args.dataset}_{args.model_depth}_") and f.endswith(".pt"):
+      os.remove(os.path.join(args.ckpt_out, f))
 
   if send_to_wandb and master_process:
     wandb_run.finish()

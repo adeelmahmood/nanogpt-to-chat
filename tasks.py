@@ -1,7 +1,7 @@
 import random
 from datasets import load_dataset
 
-from utils import render_mcq
+from utils import print0, render_mcq
 
 
 class Task:
@@ -56,11 +56,11 @@ class SmolTalkTask(Task):
         super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
 
-        print(f"Loading SmolTalk {split}")
+        print0(f"Loading SmolTalk {split}")
         self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}")
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
-        print(f"Loaded {self.length:,} conversations")
+        print0(f"Loaded {self.length:,} conversations")
 
     def num_examples(self):
         return self.length
@@ -81,13 +81,13 @@ class MMLU(Task):
         super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
 
-        print(f"Loading MMLU {split} {subset}")
+        print0(f"Loading MMLU {split} {subset}")
         self.ds = load_dataset("cais/mmlu", subset, split=split)
         if subset == "auxiliary_train":
             self.ds = self.ds.map(lambda row: row["train"], remove_columns=["train"])
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
-        print(f"Loaded {self.length:,} questions")
+        print0(f"Loaded {self.length:,} questions")
 
     def num_examples(self):
         return self.length
@@ -126,11 +126,11 @@ class Arc(Task):
             "ARC-Challenge",
         ], "subset must be ARC-Easy|ARC-Challenge"
 
-        print(f"Loading Arc {split} {subset}")
+        print0(f"Loading Arc {split} {subset}")
         self.ds = load_dataset("allenai/ai2_arc", subset, split=split)
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
-        print(f"Loaded {self.length:,} questions")
+        print0(f"Loaded {self.length:,} questions")
 
     def num_examples(self):
         return self.length
@@ -160,10 +160,10 @@ class GSM8K(Task):
         super().__init__(**kwargs)
         assert split in ["train", "test"]
 
-        print(f"Loading GSM5k {split} {subset}")
+        print0(f"Loading GSM5k {split} {subset}")
         self.ds = load_dataset("openai/gsm8k", subset, split=split).shuffle(seed=42)
         self.length = len(self.ds)
-        print(f"Loaded {self.length:,} questions")
+        print0(f"Loaded {self.length:,} questions")
 
     def num_examples(self):
         return self.length
@@ -185,6 +185,41 @@ class GSM8K(Task):
         return {"messages": messages}
 
 
+class SpellingTask(Task):
+    def __init__(self, split="train", size=1000, **kwargs):
+        super().__init__(**kwargs)
+        assert split in ["train", "test"], "split must be train|test"
+        print0(f"Loading SpellingTask {split}")
+
+        with open("download/words_alpha.txt") as f:
+            self.words = [line.strip() for line in f]
+        self.length = min(len(self.words), size)
+        self.words = self.words[: self.length]
+
+        # deterministic shuffle
+        rng = random.Random(42)
+        rng.shuffle(self.words)
+
+        print0(f"Loaded {self.length:,} words")
+
+    def num_examples(self):
+        return self.length
+
+    def get_example(self, idx):
+        rng = random.Random(idx)
+        word = rng.choice(self.words)
+        word_letters = ",".join(word)
+
+        messages = [
+            {"role": "user", "content": f"Spell the word: {word}"},
+            {"role": "assistant", "content": f"{word}:{word_letters}"},
+        ]
+
+        return {"messages": messages}
+
+
 if __name__ == "__main__":
-    task = TaskMixture([SmolTalkTask(split="train", start=0, stop=10)])
-    print(len(task))
+    spelling = SpellingTask(split="train", size=1000)
+    # print 10 examples
+    for i in range(10):
+        print0(spelling.get_example(i))

@@ -1,6 +1,7 @@
 import argparse
 from contextlib import nullcontext
 from datetime import datetime
+import math
 from dataloader_sft import sft_loader
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
@@ -90,7 +91,7 @@ def main():
     # Load pretrained state for model and optimizer
     checkpoint = (
         args.resume_ckpt
-        or f"./{args.ckpt_out}/mid-train_{args.dataset}_{args.model_depth}.pt"
+        or f"{args.ckpt_out}/mid-train_{args.dataset}_{args.model_depth}.pt"
     )
     ckpt, _ = load_checkpoint(
         path=checkpoint, model=model, optimizer=None, device=device
@@ -110,7 +111,7 @@ def main():
 
     # scale down learning rates for sft training
     for pg in optimizer.param_groups:
-        pg["lr"] *= 0.02
+        pg["lr"] *= 0.05
         pg["initial_lr"] = pg["lr"]
 
     if master_process:
@@ -130,8 +131,9 @@ def main():
     max_steps = args.max_steps or 900
     B = args.batch_size
     target_examples_per_step = 32
-
-    gradient_accum_steps = target_examples_per_step // (B * ddp_world_size)
+    gradient_accum_steps = max(
+        1, math.ceil(target_examples_per_step // (B * ddp_world_size))
+    )
 
     print0(f"\nB = {B}, target_examples_per_step = {target_examples_per_step}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
@@ -270,6 +272,15 @@ def main():
             # backward pass
             loss.backward()
             num_tokens += (y >= 0).sum()
+
+            print(
+                "max grad:",
+                max(
+                    p.grad.abs().max().item()
+                    for p in model.parameters()
+                    if p.grad is not None
+                ),
+            )
 
         # gather loss from all ranks
         if ddp:

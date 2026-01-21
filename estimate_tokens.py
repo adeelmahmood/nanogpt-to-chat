@@ -1,4 +1,5 @@
-from tasks import MMLU, Arc, SmolTalkTask
+from chat import render_conversation
+from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
 from transformers import AutoTokenizer
 from tqdm import tqdm
 
@@ -7,25 +8,21 @@ tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
 def count_tokens(task, max_samples=None):
     total = 0
-    n = len(task)
-    if max_samples:
-        n = min(n, max_samples)
 
-    for i in tqdm(range(n)):
+    for i in range(len(task)):
         ex = task.get_example(i)
-        text = ""
-        for m in ex["messages"]:
-            text += m["role"] + ": " + m["content"] + "\n"
-        total += len(tokenizer(text).input_ids)
+        ids, _ = render_conversation(ex, tokenizer=tokenizer)
+        total += len(ids)
 
-    return total, total / n
+    return total
 
 
-# Example usage
-smol = SmolTalkTask()
-mmlu = MMLU()
-arc = Arc()
-
-print("SmolTalk:", count_tokens(smol, max_samples=1000))
-print("MMLU:", count_tokens(mmlu, max_samples=1000))
-print("ARC:", count_tokens(arc, max_samples=1000))
+train_task = TaskMixture(
+    [
+        SmolTalkTask(stop=10_000),
+        MMLU(stop=2_000),
+        GSM8K(stop=2_000),
+        Arc(stop=2_000),
+    ]
+)
+print(f"Train task token estimate: {count_tokens(train_task):,}")

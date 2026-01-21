@@ -4,7 +4,7 @@ from datetime import datetime
 from dataloader_midtrain_bos import midtraining_loader_bos
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 from sft_train import parse_args
-from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
+from tasks import GSM8K, MMLU, Arc, SmolTalkTask, SpellingTask, TaskMixture
 import torch
 import time
 import os
@@ -149,7 +149,16 @@ def main():
 
     # Midtraining datasets
     train_task = TaskMixture(
-        [SmolTalkTask(), MMLU(), MMLU(), GSM8K(), GSM8K(), Arc(), Arc()]
+        [
+            SmolTalkTask(),
+            MMLU(),
+            MMLU(),
+            GSM8K(),
+            GSM8K(),
+            Arc(),
+            Arc(),
+            SpellingTask(size=200_000),
+        ]
     )
 
     train_loader = midtraining_loader_bos(

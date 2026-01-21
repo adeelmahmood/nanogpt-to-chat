@@ -6,12 +6,18 @@ import torch.nn.functional as F
 
 class Sampler:
     def __init__(self, temperature=1.0, top_k=50):
+        assert temperature >= 0.0, "Temperature must be non-negative"
+        assert top_k is None or top_k > 0, "top_k must be positive or None"
+
         self.temperature = temperature
         self.top_k = top_k
 
     def sample(self, logits):
-        if self.temperature != 1.0:
-            logits = logits / self.temperature
+        if self.temperature == 0:
+            return torch.argmax(logits, dim=-1, keepdim=True)
+
+        # Apply temperature
+        logits = logits / self.temperature
 
         probs = F.softmax(logits, dim=-1)
 

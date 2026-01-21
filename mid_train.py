@@ -1,4 +1,3 @@
-import argparse
 from contextlib import nullcontext
 from datetime import datetime
 import math
@@ -111,7 +110,7 @@ def main():
     # scale down learning rates for midtraining
     for pg in optimizer.param_groups:
         pg["lr"] *= 0.5
-        pg["initial_lr"] *= 0.5
+        pg["initial_lr"] = pg["lr"]
 
     if master_process:
         print(
@@ -130,14 +129,16 @@ def main():
     max_steps = args.max_steps or 1000
     B = args.batch_size
     T = config.block_size
-    total_batch_size = args.total_batch_size
+    total_batch_size = args.total_batch_size or (B * T * ddp_world_size)
     gradient_accum_steps = max(
-        1, math.ceil(total_batch_size // (B * T * ddp_world_size))
-    )  # 128 or 32
+        1, math.ceil(total_batch_size / (B * T * ddp_world_size))
+    )
 
     print0(f"\nB = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
     print0(f"Total batch size: {total_batch_size}")
+
+    eval_every = args.eval_every or (max_steps // 10)
 
     if master_process:
         print("\n======== RUN CONFIG ========")
@@ -145,7 +146,7 @@ def main():
         print(f"batch_size     : {B}")
         print(f"block_size     : {config.block_size}")
         print(f"max_steps      : {max_steps}")
-        print(f"eval_every     : {args.eval_every}")
+        print(f"eval_every     : {eval_every}")
         if hasattr(args, "resume_ckpt"):
             print(f"resume_ckpt    : {args.resume_ckpt}")
         print("============================\n")
@@ -224,7 +225,7 @@ def main():
         last_step = step == max_steps - 1
 
         # validation loss
-        if args.eval_every and step > 0 and (step % args.eval_every == 0 or last_step):
+        if step > 0 and (step % eval_every == 0 or last_step):
             model.eval()
             with torch.no_grad():
                 val_loss_steps = 10

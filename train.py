@@ -1,6 +1,6 @@
-import argparse
 from contextlib import nullcontext
 from datetime import datetime
+import math
 from dataloader import DataLoaderLite
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 import torch
@@ -97,8 +97,10 @@ def main():
 
     B = args.batch_size
     T = config.block_size
-    total_batch_size = args.total_batch_size
-    gradient_accum_steps = total_batch_size // (B * T * ddp_world_size)  # 128 or 32
+    total_batch_size = args.total_batch_size or (B * T * ddp_world_size)
+    gradient_accum_steps = max(
+        1, math.ceil(total_batch_size / (B * T * ddp_world_size))
+    )
     data_set_folder = args.data_root or defaults["data_root"]
 
     print0(f"\nB = {B}, T = {T}")
@@ -168,6 +170,9 @@ def main():
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
 
+    eval_every = args.eval_every or (max_steps // 10)
+    save_every = args.save_every or (max_steps // 10)
+
     if master_process:
         print("\n======== RUN CONFIG ========")
         print(f"dataset        : {args.dataset}")
@@ -176,8 +181,8 @@ def main():
         print(f"batch_size     : {B}")
         print(f"block_size     : {config.block_size}")
         print(f"max_steps      : {max_steps}")
-        print(f"eval_every     : {args.eval_every}")
-        print(f"save_every     : {args.save_every}")
+        print(f"eval_every     : {eval_every}")
+        print(f"save_every     : {save_every}")
         if hasattr(args, "resume_ckpt") and args.resume_ckpt is not None:
             print(f"resume_ckpt    : {args.resume_ckpt}")
             print(f"Resuming from step={loaded_step}")
@@ -193,9 +198,9 @@ def main():
 
         # validation loss
         if (
-            args.eval_every
-            and step > start_step
-            and (step % args.eval_every == 0 or last_step)
+            step > start_step
+            and eval_every != -1
+            and (step % eval_every == 0 or last_step)
         ):
             model.eval()
             # val_loader.reset()
@@ -223,12 +228,7 @@ def main():
         # save checkpoint
         if master_process and (
             last_step
-            or (
-                args.save_every
-                and args.save_every != -1
-                and step > start_step
-                and step % args.save_every == 0
-            )
+            or (save_every != -1 and step > start_step and step % save_every == 0)
         ):
             ckp_prefix = f"pretrain_{args.dataset}_{args.model_depth}"
             ckpt_name = (

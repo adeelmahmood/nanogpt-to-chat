@@ -28,7 +28,7 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-ckpt = "./ckps/fw/1-18/model_19999_1768761459.748608.pt"
+ckpt = "./ckps/fw/1-18/sft-train_fw_d12.pt"
 model = GPTModel(GPTConfig(vocab_size=50304))
 model = model.to(device)
 load_checkpoint(path=ckpt, model=model, device=device, optimizer=None)
@@ -44,19 +44,19 @@ prompts = [
     "Why is sky blue?",
     "what is 2+2?",
     "What is the capital of France?",
-    "Explain how photosynthesis works.",
-    "Write a short poem about winter.",
-    "What are the benefits of exercise?",
+    # "Why is sky blue?",
+    # "Explain how photosynthesis works.",
+    # "Write a short poem about winter.",
+    # "What are the benefits of exercise?",
 ]
 
-max_new_tokens = 200
-temperature = 1.0
+max_new_tokens = 50
+temperature = 0.7
 top_k = 50
 
 print(
-    f"\n{Colors.CYAN}{Colors.BOLD}Generating samples for {len(prompts)} prompts{Colors.END}\n"
+    f"{Colors.CYAN}{Colors.BOLD}Generating samples for {len(prompts)} prompts{Colors.END}"
 )
-print(f"{Colors.YELLOW}{'=' * 80}{Colors.END}")
 
 # Generate sample for each prompt
 for i, text in enumerate(prompts):
@@ -76,15 +76,20 @@ for i, text in enumerate(prompts):
         idx, max_new_tokens=max_new_tokens, stop_token_id=special.assistant_end
     )
 
+    token_ids_list = token_ids.squeeze(0).tolist()
+
+    # check if assistant start is present in the generated tokens
+    if special.assistant_start in token_ids_list:
+        # start from here
+        start_idx = token_ids_list.index(special.assistant_start)
+        token_ids_list = token_ids_list[start_idx + 1 :]
+
     # Decode and print result
-    decoded_text = decode_with_special_tokens(token_ids.squeeze(0).tolist(), tokenizer)
+    decoded_text = decode_with_special_tokens(token_ids_list, tokenizer)
 
     print(
         f"\n{Colors.BLUE}{Colors.BOLD}Prompt {i + 1}:{Colors.END} {Colors.HEADER}{text}{Colors.END}"
     )
-    print(f"{Colors.CYAN}{'-' * 80}{Colors.END}")
     print(decoded_text)
-    print(f"{Colors.CYAN}{'-' * 80}{Colors.END}")
 
-print(f"\n{Colors.YELLOW}{'=' * 80}{Colors.END}")
 print(f"{Colors.GREEN}{Colors.BOLD}All samples generated{Colors.END}")

@@ -100,11 +100,6 @@ def main():
     # initiatlize the optimizer
     optimizer = configure_optimizer(model)
 
-    # not compiling because of variable sequence length
-    # if device_type == "cuda":
-    #   print0("Compiling model")
-    #   model = torch.compile(model, dynamic=False)
-
     # wrap the model in ddp
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
@@ -130,9 +125,9 @@ def main():
     # Hyper parameters
     max_steps = args.max_steps or 900
     B = args.batch_size
-    target_examples_per_step = 32
+    target_examples_per_step = args.target_examples_per_step or 32
     gradient_accum_steps = max(
-        1, math.ceil(target_examples_per_step // (B * ddp_world_size))
+        1, math.ceil(target_examples_per_step / (B * ddp_world_size))
     )
 
     print0(f"\nB = {B}, target_examples_per_step = {target_examples_per_step}")
@@ -144,7 +139,6 @@ def main():
         print(f"batch_size     : {B}")
         print(f"block_size     : {config.block_size}")
         print(f"max_steps      : {max_steps}")
-        print(f"eval_every     : {args.eval_every}")
         if hasattr(args, "resume_ckpt"):
             print(f"resume_ckpt    : {args.resume_ckpt}")
         print("============================\n")
@@ -193,8 +187,8 @@ def main():
     for step in range(max_steps):
         last_step = step == max_steps - 1
 
-        # validation loss
-        if args.eval_every and step > 0 and (step % args.eval_every == 0 or last_step):
+        # validation loss (just do it twice)
+        if master_process and (last_step or step % (max_steps // 2) == 0):
             model.eval()
             with torch.no_grad():
                 val_loss_steps = 10

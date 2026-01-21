@@ -151,9 +151,9 @@ if master_process:
 # SFT datasets
 train_task = TaskMixture([
     SmolTalkTask(stop=64),
-    # MMLU(stop=2_000),
-    # GSM8K(stop=2_000),
-    # Arc(stop=2_000),
+    MMLU(stop=2_000),
+    GSM8K(stop=2_000),
+    Arc(stop=2_000),
 ])
 
 train_loader = sft_loader(

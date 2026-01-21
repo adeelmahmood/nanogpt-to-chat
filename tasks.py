@@ -8,47 +8,59 @@ class Task:
         self.start = start
         self.stop = stop
 
-    def __len__(self):
+    def num_examples(self):
         raise NotImplementedError()
-    
+
     def get_example(self, idx):
         raise NotImplementedError()
     
+    def __len__(self):
+        start = self.start
+        stop = self.stop if self.stop is not None else self.num_examples()
+        return max(0, stop - start)
+    
+    def __getitem__(self, idx):
+        physical_idx = self.start + idx
+        return self.get_example(physical_idx)
+    
 
 class TaskMixture(Task):
-    def __init__(self, tasks, seed=42):
+    def __init__(self, tasks, seed=42, **kwargs):
+        super().__init__(**kwargs)
         self.tasks = tasks
         self.indices = []
-
+        self.num_conversations = 0
+        
         for idx, task in enumerate(tasks):
             for i in range(len(task)):
                 self.indices.append((idx, i))
-
+                self.num_conversations += 1
+        
         rng = random.Random(seed)
         rng.shuffle(self.indices)
 
-    def __len__(self):
-        return len(self.indices)
+    def num_examples(self):
+        return self.num_conversations
     
-    def get(self, idx):
+    def get_example(self, idx):
+        assert 0 <= idx < self.num_conversations, f"Index {idx} out of range in {self.num_conversations} conversations"
         ti, i = self.indices[idx]
-        return self.tasks[ti].get_example(i)
+        return self.tasks[ti][i]
     
 
 
 class SmolTalkTask(Task):
-    def __init__(self, start=0, stop=None, split = "train"):
-        super().__init__(start, stop)
+    def __init__(self, split = "train", **kwargs):
+        super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
 
         print(f"Loading SmolTalk {split}")
-        # self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}[:100]")
         self.ds = load_dataset("HuggingFaceTB/smol-smoltalk", split=f"{split}")
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} conversations")
 
-    def __len__(self):
+    def num_examples(self):
         return self.length
     
     def get_example(self, idx):
@@ -64,8 +76,8 @@ class MMLU(Task):
 
     letters = ('A', 'B', 'C', 'D')
 
-    def __init__(self, start=0, stop=None, split="train", subset="auxiliary_train"):
-        super().__init__(start, stop)
+    def __init__(self, split="train", subset="auxiliary_train", **kwargs):
+        super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
 
         print(f"Loading MMLU {split} {subset}")
@@ -76,7 +88,7 @@ class MMLU(Task):
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} questions")
 
-    def __len__(self):
+    def num_examples(self):
         return self.length
     
     def get_example(self, idx):
@@ -105,8 +117,8 @@ class MMLU(Task):
 
 class Arc(Task):
 
-    def __init__(self, start=0, stop=None, split="train", subset="ARC-Easy"):
-        super().__init__(start, stop)
+    def __init__(self, split="train", subset="ARC-Easy", **kwargs):
+        super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
         assert subset in ["ARC-Easy", "ARC-Challenge"], "subset must be ARC-Easy|ARC-Challenge"
 
@@ -116,7 +128,7 @@ class Arc(Task):
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} questions")
 
-    def __len__(self):
+    def num_examples(self):
         return self.length
     
     def get_example(self, idx):
@@ -144,8 +156,8 @@ class Arc(Task):
 
 
 class GSM8K(Task):
-    def __init__(self, split="train", subset="main"):
-        super().__init__()
+    def __init__(self, split="train", subset="main", **kwargs):
+        super().__init__(**kwargs)
         assert split in ["train", "test"]
 
         print(f"Loading GSM5k {split} {subset}")
@@ -153,7 +165,7 @@ class GSM8K(Task):
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} questions")
 
-    def __len__(self):
+    def num_examples(self):
         return self.length
 
     def get_example(self, idx):
@@ -176,5 +188,7 @@ class GSM8K(Task):
 
 
 if __name__ == "__main__":
-    task = GSM8K()
-    print(task.get_example(0))
+    task = TaskMixture(
+        [SmolTalkTask(split="train", start=0, stop=10)]
+    )
+    print(len(task))

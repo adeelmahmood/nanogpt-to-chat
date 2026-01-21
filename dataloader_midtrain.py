@@ -19,7 +19,7 @@ def midtraining_loader(tokenizer, task, batch_size, seq_len, device, ddp_rank=0,
     while True: 
         # fill stream 
         while len(token_buffer) < needed_tokens: 
-            conv = task.get(pointer) 
+            conv = task.get_example(pointer) 
             ids, _ = render_conversation(conv, tokenizer) 
             
             token_buffer.extend(ids) 

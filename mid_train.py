@@ -1,6 +1,7 @@
 import argparse
 from contextlib import nullcontext
 from datetime import datetime
+import math
 from dataloader_midtrain_bos import midtraining_loader_bos
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 from sft_train import parse_args
@@ -130,7 +131,9 @@ def main():
     B = args.batch_size
     T = config.block_size
     total_batch_size = args.total_batch_size
-    gradient_accum_steps = total_batch_size // (B * T * ddp_world_size)  # 128 or 32
+    gradient_accum_steps = max(
+        1, math.ceil(total_batch_size // (B * T * ddp_world_size))
+    )  # 128 or 32
 
     print0(f"\nB = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")

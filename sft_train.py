@@ -4,7 +4,7 @@ from datetime import datetime
 import math
 from dataloader_sft import sft_loader
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
-from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
+from tasks import GSM8K, MMLU, Arc, SmolTalkTask, SpellingTask, TaskMixture
 import torch
 import time
 import os
@@ -111,7 +111,7 @@ def main():
 
     # scale down learning rates for sft training
     for pg in optimizer.param_groups:
-        pg["lr"] *= 0.05
+        pg["lr"] *= 0.02
         pg["initial_lr"] = pg["lr"]
 
     if master_process:
@@ -152,10 +152,11 @@ def main():
     # SFT datasets
     train_task = TaskMixture(
         [
+            Arc(subset="ARC-Easy"),
+            Arc(subset="ARC-Challenge"),
+            GSM8K(),
             SmolTalkTask(stop=10_000),
-            MMLU(stop=2_000),
-            GSM8K(stop=2_000),
-            Arc(stop=2_000),
+            SpellingTask(size=500),
         ]
     )
 
@@ -172,24 +173,6 @@ def main():
     val_loaders = {
         "smoltalk": sft_loader(
             dataset=TaskMixture([SmolTalkTask(split="test")]),
-            batch_size=B,
-            max_seq_len=config.block_size,
-            tokenizer=tokenizer,
-            device=device,
-            ddp_rank=ddp_rank,
-            ddp_world_size=ddp_world_size,
-        ),
-        "mmlu": sft_loader(
-            dataset=TaskMixture([MMLU(subset="all", split="test", stop=5200)]),
-            batch_size=B,
-            max_seq_len=config.block_size,
-            tokenizer=tokenizer,
-            device=device,
-            ddp_rank=ddp_rank,
-            ddp_world_size=ddp_world_size,
-        ),
-        "gsm8k": sft_loader(
-            dataset=TaskMixture([GSM8K(split="test", stop=420)]),
             batch_size=B,
             max_seq_len=config.block_size,
             tokenizer=tokenizer,
@@ -272,15 +255,6 @@ def main():
             # backward pass
             loss.backward()
             num_tokens += (y >= 0).sum()
-
-            print(
-                "max grad:",
-                max(
-                    p.grad.abs().max().item()
-                    for p in model.parameters()
-                    if p.grad is not None
-                ),
-            )
 
         # gather loss from all ranks
         if ddp:

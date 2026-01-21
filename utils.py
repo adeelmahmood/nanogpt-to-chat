@@ -80,7 +80,9 @@ def load_checkpoint(
     ckpt = torch.load(path, map_location=device, weights_only=False)
 
     # Model
-    model.load_state_dict(ckpt["model_state_dict"], strict=strict)
+    state = ckpt["model_state_dict"]
+    state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+    model.load_state_dict(state, strict=strict)
     model.to(device)
 
     # Optimizer

@@ -96,8 +96,6 @@ def main():
         path=checkpoint, model=model, optimizer=None, device=device
     )
 
-    orig_model = model  # for saving checkpoints and sampling
-
     # initiatlize the optimizer
     optimizer = configure_optimizer(model)
 
@@ -119,7 +117,13 @@ def main():
             f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
         )
         print("Loaded pretrained model. Sampling...")
-        sample_from_model(orig_model, tokenizer, device, "Sam", max_tokens=100)
+        sample_from_model(
+            model.module if ddp else model,
+            tokenizer,
+            device,
+            "Why is sky blue?",
+            max_tokens=100,
+        )
 
     # Hyper parameters
     max_steps = args.max_steps or 1000
@@ -237,7 +241,13 @@ def main():
             ckpt_path = os.path.join(
                 args.ckpt_out, f"mid-train_{args.dataset}_{args.model_depth}.pt"
             )
-            save_checkpoint(ckpt_path, orig_model, optimizer, step=step, config=config)
+            save_checkpoint(
+                ckpt_path,
+                model.module if ddp else model,
+                optimizer,
+                step=step,
+                config=config,
+            )
 
         if last_step:
             break
@@ -315,7 +325,13 @@ def main():
     if master_process:
         model.eval()
         print("Finished mitraining. Sampling...")
-        sample_from_model(orig_model, tokenizer, device, "Sam", max_tokens=100)
+        sample_from_model(
+            model.module if ddp else model,
+            tokenizer,
+            device,
+            "Why is sky blue?",
+            max_tokens=100,
+        )
 
     if send_to_wandb and master_process:
         wandb_run.finish()

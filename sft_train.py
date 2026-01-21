@@ -96,9 +96,6 @@ def main():
         path=checkpoint, model=model, optimizer=None, device=device
     )
 
-    # not needed because we are not compiling
-    # orig_model = model # for saving checkpoints and sampling
-
     # initiatlize the optimizer
     optimizer = configure_optimizer(model)
 

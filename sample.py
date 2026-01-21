@@ -31,7 +31,7 @@ tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
 checkpoint = torch.load(
-    "./ckps/fw/1-18/model_19999_1768761459.748608.pt",
+    "./ckps/fw/1-18/midtrain_model_00999.pt",
     map_location=device,
     weights_only=False,
 )

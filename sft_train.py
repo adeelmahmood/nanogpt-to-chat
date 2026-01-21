@@ -116,7 +116,7 @@ if ddp:
 
 # scale down learning rates for sft training
 for pg in optimizer.param_groups:
-    pg["lr"] *= 0.02
+    pg["lr"] *= 0.05
     pg["initial_lr"] = pg["lr"]
 
 
@@ -150,10 +150,10 @@ if master_process:
 
 # SFT datasets
 train_task = TaskMixture([
-    SmolTalkTask(stop=10_000),
-    MMLU(stop=2_000),
-    GSM8K(stop=2_000),
-    Arc(stop=2_000),
+    SmolTalkTask(stop=64),
+    # MMLU(stop=2_000),
+    # GSM8K(stop=2_000),
+    # Arc(stop=2_000),
 ])
 
 train_loader = sft_loader(
@@ -204,15 +204,18 @@ ema_loss = 0.0
 ema_initialized = False
 alpha = 0.98
 
-def get_lr_multiplier(progress):
-    # clamp progress to [0, 1]
-    progress = min(max(progress, 0.0), 1.0)
+# def get_lr_multiplier(progress):
+#     # clamp progress to [0, 1]
+#     progress = min(max(progress, 0.0), 1.0)
 
-    # first 80%: flat LR, last 20%: linear decay to zero
-    if progress < 0.8:
-        return 1.0
-    else:
-        return max(1.0 - (progress - 0.8) / 0.2, 0.0)
+#     # first 80%: flat LR, last 20%: linear decay to zero
+#     if progress < 0.8:
+#         return 1.0
+#     else:
+#         return max(1.0 - (progress - 0.8) / 0.2, 0.0)
+
+def get_lr_multiplier(progress):
+    return max(1.0 - progress, 0.0)
 
 print0(f"\nStarting SFT-Training ({datetime.now()})")
 
@@ -285,11 +288,10 @@ for step in range(max_steps):
 
     # update EMA of loss
     step_loss = loss_accum.item()
-    if not ema_initialized:
-        ema_loss = step_loss
-        ema_initialized = True
+    if step == 0:
+      ema_loss = step_loss
     else:
-        ema_loss = alpha * ema_loss + (1 - alpha) * step_loss
+      ema_loss = alpha * ema_loss + (1 - alpha) * step_loss
 
     # backward pass
     loss.backward()

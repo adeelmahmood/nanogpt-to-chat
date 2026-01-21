@@ -3,6 +3,7 @@ from datasets import load_dataset
 
 from utils import render_mcq
 
+
 class Task:
     def __init__(self, start=0, stop=None):
         self.start = start
@@ -13,16 +14,16 @@ class Task:
 
     def get_example(self, idx):
         raise NotImplementedError()
-    
+
     def __len__(self):
         start = self.start
         stop = self.stop if self.stop is not None else self.num_examples()
         return max(0, stop - start)
-    
+
     def __getitem__(self, idx):
         physical_idx = self.start + idx
         return self.get_example(physical_idx)
-    
+
 
 class TaskMixture(Task):
     def __init__(self, tasks, seed=42, **kwargs):
@@ -30,27 +31,28 @@ class TaskMixture(Task):
         self.tasks = tasks
         self.indices = []
         self.num_conversations = 0
-        
+
         for idx, task in enumerate(tasks):
             for i in range(len(task)):
                 self.indices.append((idx, i))
                 self.num_conversations += 1
-        
+
         rng = random.Random(seed)
         rng.shuffle(self.indices)
 
     def num_examples(self):
         return self.num_conversations
-    
+
     def get_example(self, idx):
-        assert 0 <= idx < self.num_conversations, f"Index {idx} out of range in {self.num_conversations} conversations"
+        assert (
+            0 <= idx < self.num_conversations
+        ), f"Index {idx} out of range in {self.num_conversations} conversations"
         ti, i = self.indices[idx]
         return self.tasks[ti][i]
-    
 
 
 class SmolTalkTask(Task):
-    def __init__(self, split = "train", **kwargs):
+    def __init__(self, split="train", **kwargs):
         super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
 
@@ -62,19 +64,18 @@ class SmolTalkTask(Task):
 
     def num_examples(self):
         return self.length
-    
+
     def get_example(self, idx):
         # print(f"get_example {idx}")
         row = self.ds[idx]
         messages = row["messages"]
 
-        return { "messages": messages }
-
+        return {"messages": messages}
 
 
 class MMLU(Task):
 
-    letters = ('A', 'B', 'C', 'D')
+    letters = ("A", "B", "C", "D")
 
     def __init__(self, split="train", subset="auxiliary_train", **kwargs):
         super().__init__(**kwargs)
@@ -83,14 +84,14 @@ class MMLU(Task):
         print(f"Loading MMLU {split} {subset}")
         self.ds = load_dataset("cais/mmlu", subset, split=split)
         if subset == "auxiliary_train":
-            self.ds = self.ds.map(lambda row: row['train'], remove_columns=['train'])
+            self.ds = self.ds.map(lambda row: row["train"], remove_columns=["train"])
         self.ds = self.ds.shuffle(seed=42)
         self.length = len(self.ds)
         print(f"Loaded {self.length:,} questions")
 
     def num_examples(self):
         return self.length
-    
+
     def get_example(self, idx):
         row = self.ds[idx]
         question = row["question"]
@@ -105,11 +106,11 @@ class MMLU(Task):
             {"role": "user", "content": user_message},
             {"role": "assistant", "content": assistant_message},
         ]
-        
+
         conversation = {
             "messages": messages,
             "subject": subject,
-            "letters": self.letters
+            "letters": self.letters,
         }
 
         return conversation
@@ -120,7 +121,10 @@ class Arc(Task):
     def __init__(self, split="train", subset="ARC-Easy", **kwargs):
         super().__init__(**kwargs)
         assert split in ["train", "test"], "split must be train|test"
-        assert subset in ["ARC-Easy", "ARC-Challenge"], "subset must be ARC-Easy|ARC-Challenge"
+        assert subset in [
+            "ARC-Easy",
+            "ARC-Challenge",
+        ], "subset must be ARC-Easy|ARC-Challenge"
 
         print(f"Loading Arc {split} {subset}")
         self.ds = load_dataset("allenai/ai2_arc", subset, split=split)
@@ -130,7 +134,7 @@ class Arc(Task):
 
     def num_examples(self):
         return self.length
-    
+
     def get_example(self, idx):
         row = self.ds[idx]
         question = row["question"]
@@ -145,14 +149,10 @@ class Arc(Task):
             {"role": "user", "content": user_message},
             {"role": "assistant", "content": assistant_message},
         ]
-        
-        conversation = {
-            "messages": messages,
-            "letters": letters
-        }
+
+        conversation = {"messages": messages, "letters": letters}
 
         return conversation
-
 
 
 class GSM8K(Task):
@@ -184,11 +184,7 @@ class GSM8K(Task):
 
         return {"messages": messages}
 
-    
-
 
 if __name__ == "__main__":
-    task = TaskMixture(
-        [SmolTalkTask(split="train", start=0, stop=10)]
-    )
+    task = TaskMixture([SmolTalkTask(split="train", start=0, stop=10)])
     print(len(task))

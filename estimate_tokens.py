@@ -4,6 +4,7 @@ from tqdm import tqdm
 
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
+
 def count_tokens(task, max_samples=None):
     total = 0
     n = len(task)
@@ -18,6 +19,7 @@ def count_tokens(task, max_samples=None):
         total += len(tokenizer(text).input_ids)
 
     return total, total / n
+
 
 # Example usage
 smol = SmolTalkTask()

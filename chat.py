@@ -33,7 +33,7 @@ def decode_with_special_tokens(token_ids, tokenizer):
     Decode token IDs, replacing special tokens with readable strings.
     """
     special = get_special_tokens()
-    
+
     # Reverse mapping: ID -> string
     special_map = {
         special.bos: "<|bos|>",
@@ -46,7 +46,7 @@ def decode_with_special_tokens(token_ids, tokenizer):
         special.output_start: "<|output_start|>",
         special.output_end: "<|output_end|>",
     }
-    
+
     result = []
     for token_id in token_ids:
         if token_id in special_map:
@@ -55,7 +55,7 @@ def decode_with_special_tokens(token_ids, tokenizer):
         else:
             # Regular token - decode it
             result.append(tokenizer.decode([token_id]))
-    
+
     return "".join(result)
 
 
@@ -63,6 +63,7 @@ def sanitize(text: str) -> str:
     # Remove GPT-2 control token explicitly
     text = text.replace("<|endoftext|>", "")
     return text
+
 
 def render_conversation(conversation, tokenizer, max_tokens=None):
     special = get_special_tokens()
@@ -98,7 +99,7 @@ def render_conversation(conversation, tokenizer, max_tokens=None):
         masks = masks[:max_tokens]
 
     return ids, masks
-            
+
 
 if __name__ == "__main__":
     import tiktoken

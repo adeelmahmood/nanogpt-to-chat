@@ -2,19 +2,23 @@ import torch
 import numpy as np
 import os
 
+
 def load_tokens(filename):
     npt = np.load(filename)
-    npt = npt.astype(np.int32) # added after video
+    npt = npt.astype(np.int32)  # added after video
     ptt = torch.tensor(npt, dtype=torch.long)
     return ptt
 
+
 class DataLoaderLite:
-    def __init__(self, B, T, process_rank, num_processes, split, data_root, master_process=False):
+    def __init__(
+        self, B, T, process_rank, num_processes, split, data_root, master_process=False
+    ):
         self.B = B
         self.T = T
         self.process_rank = process_rank
         self.num_processes = num_processes
-        assert split in {'train', 'val'}
+        assert split in {"train", "val"}
 
         # get the shard filenames
         shards = os.listdir(data_root)
@@ -30,7 +34,7 @@ class DataLoaderLite:
     def state_dict(self):
         return {
             "current_shard": self.current_shard,
-            "current_position": self.current_position
+            "current_position": self.current_position,
         }
 
     def load_state_dict(self, state_dict):
@@ -46,9 +50,9 @@ class DataLoaderLite:
 
     def next_batch(self):
         B, T = self.B, self.T
-        buf = self.tokens[self.current_position : self.current_position+B*T+1]
-        x = (buf[:-1]).view(B, T) # inputs
-        y = (buf[1:]).view(B, T) # targets
+        buf = self.tokens[self.current_position : self.current_position + B * T + 1]
+        x = (buf[:-1]).view(B, T)  # inputs
+        y = (buf[1:]).view(B, T)  # targets
         # advance the position in the tensor
         self.current_position += B * T * self.num_processes
         # if loading the next batch would be out of bounds, advance to next shard

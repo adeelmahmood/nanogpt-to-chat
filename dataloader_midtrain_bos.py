@@ -2,7 +2,17 @@ from chat import decode_with_special_tokens, get_special_tokens, render_conversa
 from tasks import TaskMixture
 import torch
 
-def midtraining_loader_bos(tokenizer, task, batch_size, seq_len, device, ddp_rank=0, ddp_world_size=1, buffer_size=128): 
+
+def midtraining_loader_bos(
+    tokenizer,
+    task,
+    batch_size,
+    seq_len,
+    device,
+    ddp_rank=0,
+    ddp_world_size=1,
+    buffer_size=128,
+):
     row_capacity = seq_len + 1
     conv_buffer = []
     pointer = ddp_rank
@@ -15,7 +25,7 @@ def midtraining_loader_bos(tokenizer, task, batch_size, seq_len, device, ddp_ran
             ids, _ = render_conversation(conversation=conv, tokenizer=tokenizer)
             conv_buffer.append(ids)
             pointer = (pointer + ddp_world_size) % task_size
-    
+
     while True:
         rows = []
         for _ in range(batch_size):
@@ -45,7 +55,6 @@ def midtraining_loader_bos(tokenizer, task, batch_size, seq_len, device, ddp_ran
         x = batch[:, :-1].to(device, non_blocking=True)
         y = batch[:, 1:].to(device, non_blocking=True)
         yield x, y
-    
 
 
 if __name__ == "__main__":
@@ -60,9 +69,9 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
         task=task,
         batch_size=10,
-        seq_len=256,   # small for readability
+        seq_len=256,  # small for readability
         device="cpu",
-        buffer_size=256
+        buffer_size=256,
     )
 
     # counter = 0
@@ -88,14 +97,11 @@ if __name__ == "__main__":
     #             f"-> y='{y_tok:>10}' | {tag}"
     #         )
 
-        
     #     print('-------------')
     #     counter +=1
 
     #     if counter > 2:
     #         break
-
-    
 
     def test_bos_alignment(loader, num_batches=100):
         special = get_special_tokens()
@@ -105,7 +111,7 @@ if __name__ == "__main__":
         bos_at_start = 0
 
         for _ in range(num_batches):
-            x, y = next(loader)   # x: (B, T)
+            x, y = next(loader)  # x: (B, T)
             total_rows += x.size(0)
             bos_at_start += (x[:, 0] == bos).sum().item()
 
@@ -113,7 +119,7 @@ if __name__ == "__main__":
         print(f"BOS@start ratio: {ratio:.4f} ({bos_at_start}/{total_rows})")
 
         return ratio
-    
+
     def test_bos_frequency(loader, num_batches=50):
         special = get_special_tokens()
         bos = special.bos
@@ -132,7 +138,5 @@ if __name__ == "__main__":
 
         return avg, mx
 
-    
     test_bos_alignment(loader)
     test_bos_frequency(loader)
-    

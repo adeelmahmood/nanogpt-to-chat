@@ -1,6 +1,7 @@
 import json
 import os
 
+
 class MetricLogger:
     def __init__(self, out_dir, file_name="main"):
         os.makedirs(out_dir, exist_ok=True)

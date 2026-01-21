@@ -8,7 +8,12 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--ds', type=str, choices=["fw", "ts"], help='Dataset to download: fw (FineWeb Edu) | ts (The Stack)')
+parser.add_argument(
+    "--ds",
+    type=str,
+    choices=["fw", "ts"],
+    help="Dataset to download: fw (FineWeb Edu) | ts (The Stack)",
+)
 
 args = parser.parse_args()
 if args.ds == "fw":
@@ -22,7 +27,7 @@ elif args.ds == "ts":
 else:
     raise ValueError("Invalid dataset choice. Use --ds fw or --ds ts")
 
-shard_size = int(1e8) # 100M tokens per shard
+shard_size = int(1e8)  # 100M tokens per shard
 
 # create the dir
 os.makedirs(local_dir, exist_ok=True)
@@ -31,11 +36,13 @@ os.makedirs(local_dir, exist_ok=True)
 tokenizer = tiktoken.get_encoding("gpt2")
 eot = tokenizer.eot_token
 
+
 def tokenize(doc):
     tokens = [eot]
     tokens.extend(tokenizer.encode_ordinary(doc["text"]))
     tokens_np = np.array(tokens, dtype=np.uint16)
     return tokens_np
+
 
 def main():
     # check if files already there
@@ -48,7 +55,7 @@ def main():
     # download dataset inside main
     ds = load_dataset(dataset_name, name=remote_name, split="train")
 
-    nproc = max(1, os.cpu_count()//2)
+    nproc = max(1, os.cpu_count() // 2)
     print(f"num of processes={nproc}")
 
     with mp.Pool(nproc) as pool:
@@ -59,7 +66,7 @@ def main():
         for tokens in pool.imap(tokenize, ds, chunksize=16):
 
             if token_count + len(tokens) < shard_size:
-                all_tokens_np[token_count:token_count+len(tokens)] = tokens
+                all_tokens_np[token_count : token_count + len(tokens)] = tokens
                 token_count += len(tokens)
 
             else:
@@ -67,7 +74,9 @@ def main():
                 filename = os.path.join(local_dir, f"{split}_{shard_index:06d}")
 
                 remainder = shard_size - token_count
-                all_tokens_np[token_count:token_count+remainder] = tokens[:remainder]
+                all_tokens_np[token_count : token_count + remainder] = tokens[
+                    :remainder
+                ]
                 np.save(filename, all_tokens_np)
                 print(f"Saved shard {filename} with {shard_size:,} tokens")
 
@@ -78,7 +87,6 @@ def main():
                 all_tokens_np[0:leftover] = tokens[remainder:]
                 token_count = leftover
 
-
         # final shard
         if token_count != 0:
             split = "val" if shard_index == 0 else "train"
@@ -86,8 +94,7 @@ def main():
             np.save(filename, all_tokens_np[:token_count])
             print(f"Saved final shard {filename} with {token_count:,} tokens")
 
+
 if __name__ == "__main__":
     main()
     print("Download and tokenization complete.")
-
-

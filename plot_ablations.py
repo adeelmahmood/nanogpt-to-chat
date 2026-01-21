@@ -3,6 +3,7 @@ import os
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
+
 def load_run(path):
     data = defaultdict(list)
     with open(path) as f:
@@ -31,9 +32,6 @@ plt.title("Training Loss Ablation")
 plt.show()
 
 
-
-
-
 plt.figure()
 for name, run in runs.items():
     plt.plot(run["step"], run["tok_per_sec"], label=name)
@@ -43,9 +41,6 @@ plt.ylabel("Tokens / Second")
 plt.legend()
 plt.title("Throughput Ablation")
 plt.show()
-
-
-
 
 
 plt.figure()

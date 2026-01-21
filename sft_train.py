@@ -244,7 +244,7 @@ for step in range(max_steps):
   if master_process and last_step:
     ckpt_path = os.path.join(
         args.ckpt_out,
-        f"sft-train_{args.dataset}_{args.model_depth}.pt"
+        f"sft-train_{args.model_depth}.pt"
     )
     save_checkpoint(
         ckpt_path,
@@ -266,6 +266,10 @@ for step in range(max_steps):
   for grad_step in range(gradient_accum_steps):
     # get a batch
     x, y = next(train_loader)
+    # compute number of supervised tokens
+    supervised = (y != -1).sum().item()
+    total = y.numel()
+    print0(f"supervised tokens: {supervised} / {total} ({supervised/total:.3%})")
 
     # this prevents synching of gradients across ranks until grad accumulation is done
     if ddp:

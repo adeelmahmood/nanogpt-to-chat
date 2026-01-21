@@ -1,12 +1,10 @@
-from dataclasses import dataclass
 from chat import decode_with_special_tokens, get_special_tokens
 from engine import Engine, Sampler
 from gpt import GPTConfig, GPTModel
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
 import tiktoken
+
+from utils import load_checkpoint
 
 
 # ANSI color codes for terminal
@@ -30,26 +28,11 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # Load checkpoint
-checkpoint = torch.load(
-    "./ckps/fw/1-18/midtrain_model_00999.pt",
-    map_location=device,
-    weights_only=False,
-)
-
-# Strip `_orig_mod.` prefix from state dict keys if present
-state = checkpoint["model_state_dict"]
-fixed_state = {}
-
-for k, v in state.items():
-    if k.startswith("_orig_mod."):
-        fixed_state[k.replace("_orig_mod.", "", 1)] = v
-    else:
-        fixed_state[k] = v
-
-# Initialize model
+ckpt = "./ckps/fw/1-18/model_19999_1768761459.748608.pt"
 model = GPTModel(GPTConfig(vocab_size=50304))
-model.load_state_dict(fixed_state, strict=True)
-model.to(device)
+model = model.to(device)
+load_checkpoint(path=ckpt, model=model, device=device, optimizer=None)
+
 model.eval()
 
 print(f"{Colors.GREEN}{Colors.BOLD}Model loaded for inference{Colors.END}")
@@ -59,6 +42,7 @@ special = get_special_tokens()
 # Configuration for sampling
 prompts = [
     "Why is sky blue?",
+    "what is 2+2?",
     "What is the capital of France?",
     "Explain how photosynthesis works.",
     "Write a short poem about winter.",

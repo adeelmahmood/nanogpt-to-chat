@@ -21,7 +21,7 @@ def midtraining_loader_bos(
     def add_more():
         nonlocal pointer
         while len(conv_buffer) < buffer_size:
-            conv = task.get(pointer)
+            conv = task.get_example(pointer)
             ids, _ = render_conversation(conversation=conv, tokenizer=tokenizer)
             conv_buffer.append(ids)
             pointer = (pointer + ddp_world_size) % task_size

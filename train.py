@@ -83,7 +83,6 @@ def main():
         raise ValueError(f"Unknown model depth: {args.model_depth}")
 
     model = GPTModel(config).to(device)
-    orig_model = model  # for saving checkpoints and sampling
 
     # initiatlize the optimizer
     optimizer = configure_optimizer(model)
@@ -93,8 +92,8 @@ def main():
     )
 
     # Hyper parameters
-    warmup_steps = 20
     max_steps = args.max_steps or defaults["max_steps"]  # 19073 # 10B / 524288
+    warmup_steps = int(0.01 * max_steps)  # 1% of max steps
 
     B = args.batch_size
     T = config.block_size
@@ -138,7 +137,7 @@ def main():
 
         ckpt, loaded_step = load_checkpoint(
             path=args.resume_ckpt,
-            model=orig_model,
+            model=model.module if ddp else model,
             optimizer=optimizer,
             device=device,
             strict=True,
@@ -238,7 +237,7 @@ def main():
             ckpt_path = os.path.join(args.ckpt_out, ckpt_name)
             save_checkpoint(
                 ckpt_path,
-                orig_model,
+                model.module if ddp else model,
                 optimizer,
                 step=step,
                 config=config,

@@ -22,6 +22,7 @@ def parse_args():
     # batch
     parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
     parser.add_argument("--total_batch_size", type=int, default=524288)
+    parser.add_argument("--compile_model", type=bool, default=True)
 
     # training
     parser.add_argument("--max_steps", type=int, default=None)

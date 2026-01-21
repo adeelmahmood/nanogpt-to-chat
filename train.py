@@ -1,7 +1,6 @@
 import argparse
 from contextlib import nullcontext
 from datetime import datetime
-from random import random
 from dataloader import DataLoaderLite
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
 import torch
@@ -18,40 +17,11 @@ from utils import (
     dataset_defaults,
     get_lr_multiplier,
     load_checkpoint,
+    parse_args,
     print0,
     restore_rng,
     save_checkpoint,
 )
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    # dataset
-    parser.add_argument(
-        "--dataset", type=str, choices=["fw", "ts", "tsk"], default="tsk"
-    )
-
-    # model
-    parser.add_argument(
-        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
-    )
-
-    # batch
-    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
-    parser.add_argument("--total_batch_size", type=int, default=524288)
-
-    # training
-    parser.add_argument("--max_steps", type=int, default=None)
-    parser.add_argument("--eval_every", type=int, default=None)
-    parser.add_argument("--save_every", type=int, default=None)
-
-    # paths
-    parser.add_argument("--data_root", type=str, default=None)
-    parser.add_argument("--ckpt_out", type=str, default="./ckps")
-    parser.add_argument("--resume_ckpt", type=str, default=None)
-
-    return parser.parse_args()
 
 
 def main():

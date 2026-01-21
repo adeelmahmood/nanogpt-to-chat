@@ -11,7 +11,7 @@ from chat import (
 
 
 def sft_loader(
-    model, dataset, batch_size, tokenizer, device, ddp_rank=0, ddp_world_size=1
+    dataset, batch_size, max_seq_len, tokenizer, device, ddp_rank=0, ddp_world_size=1
 ):
     pad_token_id = get_special_tokens().assistant_end
 
@@ -42,10 +42,10 @@ def sft_loader(
             example = dataset.get_example(i)
             ids, mask = render_conversation(example, tokenizer)
 
-            # Limit sequence length to model's block size (until we can make Rope dynamic)
-            if model is not None and len(ids) > model.config.block_size:
-                ids = ids[: model.config.block_size]
-                mask = mask[: model.config.block_size]
+            # Limit sequence length to max_seq_len (until we can make Rope dynamic)
+            if max_seq_len is not None and len(ids) > max_seq_len:
+                ids = ids[:max_seq_len]
+                mask = mask[:max_seq_len]
 
             batch.append((ids, mask))
 

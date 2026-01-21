@@ -123,7 +123,7 @@ for pg in optimizer.param_groups:
 if master_process:
   print(f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
   print("Loaded midtrained model. Sampling...")
-  sample_from_model(orig_model, tokenizer, device, "Sam", max_tokens=100)
+  sample_from_model(orig_model, tokenizer, device, "Why is sky blue?", max_tokens=100)
 
 
 # Hyper parameters
@@ -200,6 +200,10 @@ total_time = 0
 total_examples = 0
 step = 0
 
+ema_loss = 0.0
+ema_initialized = False
+alpha = 0.98
+
 def get_lr_multiplier(progress):
     # clamp progress to [0, 1]
     progress = min(max(progress, 0.0), 1.0)
@@ -266,10 +270,6 @@ for step in range(max_steps):
   for grad_step in range(gradient_accum_steps):
     # get a batch
     x, y = next(train_loader)
-    # compute number of supervised tokens
-    supervised = (y != -1).sum().item()
-    total = y.numel()
-    print0(f"supervised tokens: {supervised} / {total} ({supervised/total:.3%})")
 
     # this prevents synching of gradients across ranks until grad accumulation is done
     if ddp:
@@ -282,6 +282,14 @@ for step in range(max_steps):
     # average the loss across grad accum batch
     loss = loss / gradient_accum_steps
     loss_accum += loss.detach()
+
+    # update EMA of loss
+    step_loss = loss_accum.item()
+    if not ema_initialized:
+        ema_loss = step_loss
+        ema_initialized = True
+    else:
+        ema_loss = alpha * ema_loss + (1 - alpha) * step_loss
 
     # backward pass
     loss.backward()
@@ -312,7 +320,7 @@ for step in range(max_steps):
   examples_per_sec = (B * gradient_accum_steps * ddp_world_size) / (et-st)
   total_time += (et-st)
   total_examples += B * gradient_accum_steps * ddp_world_size
-  print0(f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | norm {clipped_norm:.4f} | time: {(et-st)*1000:.2f}ms | examples/sec: {examples_per_sec:.2f} | total time: {total_time/60:.2f}m | total examples: {total_examples:,}")
+  print0(f"step: {step:05d}/{max_steps:05d} | step loss: {step_loss:.4f} | ema loss: {ema_loss:.4f} | norm {clipped_norm:.4f} | time: {(et-st)*1000:.2f}ms | examples/sec: {examples_per_sec:.2f} | total time: {total_time/60:.2f}m | total examples: {total_examples:,}")
   if master_process and send_to_wandb:
     wandb_run.log(
         {
@@ -332,7 +340,7 @@ for step in range(max_steps):
 if master_process:
   model.eval()
   print("Finished SFT-Training. Sampling...")
-  sample_from_model(orig_model, tokenizer, device, "Sam", max_tokens=100)
+  sample_from_model(orig_model, tokenizer, device, "Why is sky blue?", max_tokens=100)
 
 if send_to_wandb and master_process: 
   wandb_run.finish()

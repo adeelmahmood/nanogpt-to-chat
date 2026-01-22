@@ -129,6 +129,8 @@ def main():
 
     # initiatlize the optimizer
     optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
+    for pg in optimizer.param_groups:
+        print(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
 
     num_params = sum(p.nelement() for p in model.parameters())
     print0(f"\nModel parameters: {num_params/1e6:.2f}M")

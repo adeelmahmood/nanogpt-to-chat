@@ -138,7 +138,11 @@ def main():
     )
 
     # initiatlize the optimizer
-    optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
+    optimizer = configure_optimizer(
+        model, total_batch_size_tokens=total_batch_size, stage="mid"
+    )
+    for pg in optimizer.param_groups:
+        print(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
 
     if device_type == "cuda":
         print0("Compiling model")

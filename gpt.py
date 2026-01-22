@@ -460,8 +460,8 @@ def configure_optimizer(
     lm_lr = 0.0032 * lr_scale * init_lr_frac
     matrix_lr = 0.015 * lr_scale * init_lr_frac
 
-    scalar_lr = 5e-4 * init_lr_frac
-    resid_lr = scalar_lr * 0.01
+    scalar_lr = 5e-4 * init_lr_frac  # LayerNorm / bias
+    resid_lr = 0.004 * init_lr_frac  # nanochat resid analogue (or 0.005)
 
     optim_groups = [
         {
@@ -508,3 +508,25 @@ def configure_optimizer(
         group["initial_lr"] = group["lr"]
 
     return optimizer
+
+
+if __name__ == "__main__":
+    model = GPTModel(GPTConfig())
+    print(f"Model params {sum(p.nelement() for p in model.parameters())/1e6:.2f}M")
+
+    print("Pre training optimizer")
+    optimizer = configure_optimizer(model, total_batch_size_tokens=524288)
+    for pg in optimizer.param_groups:
+        print(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
+
+    print("-" * 80)
+    print("Mid training optimizer")
+    optimizer2 = configure_optimizer(model, total_batch_size_tokens=524288, stage="mid")
+    for pg in optimizer2.param_groups:
+        print(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
+
+    print("-" * 80)
+    print("SFT training optimizer")
+    optimizer3 = configure_optimizer(model, total_batch_size_tokens=524288, stage="sft")
+    for pg in optimizer3.param_groups:
+        print(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")

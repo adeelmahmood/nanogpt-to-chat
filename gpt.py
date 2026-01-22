@@ -333,54 +333,56 @@ class GPTModel(nn.Module):
         print_as_you_go=False,
         use_kv_cache=True,
     ):
-        B, T = idx.shape
+        # without this torch.compile causes issues
+        with torch._dynamo.disable():
+            B, T = idx.shape
 
-        # enforce block_size limit for ROPE
-        if T > self.config.block_size:
-            idx = idx[:, -self.config.block_size :]
-            T = idx.size(1)
+            # enforce block_size limit for ROPE
+            if T > self.config.block_size:
+                idx = idx[:, -self.config.block_size :]
+                T = idx.size(1)
 
-        kv_cache = KVCache(self.config.n_layer) if use_kv_cache else None
+            kv_cache = KVCache(self.config.n_layer) if use_kv_cache else None
 
-        # prefill cache by running tokens through once
-        logits, _ = self(idx, kv_cache=kv_cache)  # B, T, C (vocab_size)
-        next_logits = logits[:, -1, :]  # B, C (vocab_size)
+            # prefill cache by running tokens through once
+            logits, _ = self(idx, kv_cache=kv_cache)  # B, T, C (vocab_size)
+            next_logits = logits[:, -1, :]  # B, C (vocab_size)
 
-        for _ in range(max_tokens):
-            probs = F.softmax(next_logits / temperature, dim=-1)
+            for _ in range(max_tokens):
+                probs = F.softmax(next_logits / temperature, dim=-1)
 
-            if top_k is not None:
-                topk_probs, topk_indices = torch.topk(probs, top_k, dim=-1)
-                ix = torch.multinomial(topk_probs, 1)
-                xcol = torch.gather(topk_indices, -1, ix)
-            else:
-                xcol = torch.multinomial(probs, 1)
+                if top_k is not None:
+                    topk_probs, topk_indices = torch.topk(probs, top_k, dim=-1)
+                    ix = torch.multinomial(topk_probs, 1)
+                    xcol = torch.gather(topk_indices, -1, ix)
+                else:
+                    xcol = torch.multinomial(probs, 1)
 
-            # append new token to sequence
-            idx = torch.cat((idx, xcol), dim=1)
+                # append new token to sequence
+                idx = torch.cat((idx, xcol), dim=1)
 
-            if print_as_you_go:
-                token_id = xcol.item()
-                token_str = self.tokenizer.decode([token_id])
-                print(token_str, end="", flush=True)
+                if print_as_you_go:
+                    token_id = xcol.item()
+                    token_str = self.tokenizer.decode([token_id])
+                    print(token_str, end="", flush=True)
 
-            if use_kv_cache:
-                # ROPE block size safety (we have pre-computed fixed angles)
-                if kv_cache.seq_len() >= self.config.block_size:
-                    raise RuntimeError("Exceeded RoPE window during generation")
+                if use_kv_cache:
+                    # ROPE block size safety (we have pre-computed fixed angles)
+                    if kv_cache.seq_len() >= self.config.block_size:
+                        raise RuntimeError("Exceeded RoPE window during generation")
 
-                # feed only the new token
-                logits, _ = self(xcol, kv_cache=kv_cache)
-                next_logits = logits[:, -1, :]
+                    # feed only the new token
+                    logits, _ = self(xcol, kv_cache=kv_cache)
+                    next_logits = logits[:, -1, :]
 
-            else:
-                if idx.size(1) > self.config.block_size:
-                    idx = idx[:, -self.config.block_size :]
+                else:
+                    if idx.size(1) > self.config.block_size:
+                        idx = idx[:, -self.config.block_size :]
 
-                logits, _ = self(idx)
-                next_logits = logits[:, -1, :]
+                    logits, _ = self(idx)
+                    next_logits = logits[:, -1, :]
 
-        return idx
+            return idx
 
 
 def get_param_groups(model):

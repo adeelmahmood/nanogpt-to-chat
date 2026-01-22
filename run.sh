@@ -16,6 +16,7 @@ else
   echo "=============================="
   echo
 
+
   read -p "Dataset (fw / ts / tsk) [fw]: " DATASET
   DATASET=${DATASET:-fw}
 
@@ -48,8 +49,19 @@ else
   read -p "Max steps [1000]: " MID_STEPS
   MID_STEPS=${MID_STEPS:-1000}
 
-  read -p "Eval Every [$(($TRAIN_STEPS/10))]: " MID_EVAL_EVERY
-  MID_EVAL_EVERY=${MID_EVAL_EVERY:-$((TRAIN_STEPS/10))}
+  read -p "Eval Every [$(($MID_STEPS/10))]: " MID_EVAL_EVERY
+  MID_EVAL_EVERY=${MID_EVAL_EVERY:-$((MID_STEPS/10))}
+
+  echo "=============================="
+  echo " SFT-TRAINING SETUP "
+  echo "=============================="
+  echo
+
+  read -p "Max steps [1000]: " SFT_STEPS
+  SFT_STEPS=${SFT_STEPS:-1000}
+
+  read -p "Eval Every [$(($SFT_STEPS/10))]: " SFT_EVAL_EVERY
+  SFT_EVAL_EVERY=${SFT_EVAL_EVERY:-$((SFT_STEPS/10))}
 
   ############################################
   # SAVE PARAMETERS
@@ -62,10 +74,12 @@ BATCH_SIZE=$BATCH_SIZE
 TOTAL_BATCH_SIZE=$TOTAL_BATCH_SIZE
 TRAIN_STEPS=$TRAIN_STEPS
 MID_STEPS=$MID_STEPS
+SFT_STEPS=$SFT_STEPS
 EVAL_EVERY=$EVAL_EVERY
 SAVE_EVERY=$SAVE_EVERY
 MID_EVAL_EVERY=$MID_EVAL_EVERY
-CKPT_DIR=$CKPT_DIR
+SFT_EVAL_EVERY=$SFT_EVAL_EVERY
+CKPT_DIR=$CKPT_DIR  
 EOF
 
   echo
@@ -88,6 +102,8 @@ fi
 ############################################
 # PRETRAIN
 ############################################
+
+
 
 # PRETRAIN RESUME LOGIC
 
@@ -176,6 +192,42 @@ MID_CMD=(
 )
 
 "${MID_CMD[@]}"
+
+echo
+echo "✅ Completed"
+
+
+# MIDTRAIN CHECKPOINT
+
+MIDTRAIN_CKPT="${CKPT_DIR}/midtrain_${DATASET}_${MODEL_DEPTH}.pt"
+
+if [[ ! -f "$MIDTRAIN_CKPT" ]]; then
+  echo "ERROR: Expected checkpoint not found:"
+  echo "  $MIDTRAIN_CKPT"
+  exit 1
+fi
+
+############################################
+# SFT-TRAIN
+############################################
+
+echo
+echo "Starting sft-training..."
+
+SFT_CMD=(
+  "${PYTHON_CMD[@]}" sft_train.py
+  --dataset "$DATASET"
+  --model_depth "$MODEL_DEPTH"
+  --batch_size "$BATCH_SIZE"
+  --total_batch_size "$TOTAL_BATCH_SIZE"
+  --resume_ckpt "$MIDTRAIN_CKPT"
+  --max_steps "$SFT_STEPS"
+  --eval_every "$SFT_EVAL_EVERY"
+  --save_every "$SAVE_EVERY"
+  --ckpt_out "$CKPT_DIR"
+)
+
+"${SFT_CMD[@]}"
 
 echo
 echo "✅ Completed"

@@ -1,3 +1,4 @@
+import argparse
 from contextlib import nullcontext
 from datetime import datetime
 import math
@@ -23,6 +24,37 @@ from utils import (
     sample_from_model,
     save_checkpoint,
 )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # dataset
+    parser.add_argument(
+        "--dataset", type=str, choices=["fw", "ts", "tsk"], default="fw"
+    )
+
+    # model
+    parser.add_argument(
+        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
+    )
+
+    # batch
+    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
+    parser.add_argument("--total_batch_size", type=int, default=524288)
+    parser.add_argument("--compile_model", type=bool, default=True)
+
+    # training
+    parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--eval_every", type=int, default=None)
+    parser.add_argument("--save_every", type=int, default=None)
+
+    # paths
+    parser.add_argument("--data_root", type=str, default=None)
+    parser.add_argument("--ckpt_out", type=str, default="./ckps")
+    parser.add_argument("--resume_ckpt", type=str, default=None)
+
+    return parser.parse_args()
 
 
 def main():
@@ -96,8 +128,17 @@ def main():
         path=checkpoint, model=model, optimizer=None, device=device
     )
 
+    # Hyper parameters
+    max_steps = args.max_steps or 1000
+    B = args.batch_size
+    T = config.block_size
+    total_batch_size = args.total_batch_size or (B * T * ddp_world_size)
+    gradient_accum_steps = max(
+        1, math.ceil(total_batch_size / (B * T * ddp_world_size))
+    )
+
     # initiatlize the optimizer
-    optimizer = configure_optimizer(model)
+    optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
 
     if device_type == "cuda":
         print0("Compiling model")
@@ -106,11 +147,6 @@ def main():
     # wrap the model in ddp
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
-
-    # scale down learning rates for midtraining
-    for pg in optimizer.param_groups:
-        pg["lr"] *= 0.5
-        pg["initial_lr"] = pg["lr"]
 
     if master_process:
         print(
@@ -124,15 +160,6 @@ def main():
             "Why is sky blue?",
             max_tokens=100,
         )
-
-    # Hyper parameters
-    max_steps = args.max_steps or 1000
-    B = args.batch_size
-    T = config.block_size
-    total_batch_size = args.total_batch_size or (B * T * ddp_world_size)
-    gradient_accum_steps = max(
-        1, math.ceil(total_batch_size / (B * T * ddp_world_size))
-    )
 
     print0(f"\nB = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
@@ -154,16 +181,12 @@ def main():
     # Midtraining datasets
     train_task = TaskMixture(
         [
-            SmolTalkTask(),
-            MMLU(),
-            MMLU(),
-            GSM8K(),
-            GSM8K(),
-            Arc(),
-            Arc(),
-            SpellingTask(size=200_000),
+            SmolTalkTask(),  # 460k
+            MMLU(),  # 100k
+            GSM8K(),  # 8k
+            SpellingTask(size=200_000),  # 200k
         ]
-    )
+    )  # Total = 460k + 100k + 8k + 200k = 768k
 
     train_loader = midtraining_loader_bos(
         tokenizer,
@@ -187,7 +210,7 @@ def main():
         ),
         "mmlu": midtraining_loader_bos(
             tokenizer,
-            TaskMixture([MMLU(subset="all", split="test")]),
+            TaskMixture([MMLU(subset="all", split="test", stop=5200)]),
             batch_size=B,
             seq_len=T,
             device=device,
@@ -196,7 +219,7 @@ def main():
         ),
         "gsm8k": midtraining_loader_bos(
             tokenizer,
-            TaskMixture([GSM8K(split="test")]),
+            TaskMixture([GSM8K(split="test", stop=420)]),
             batch_size=B,
             seq_len=T,
             device=device,
@@ -252,7 +275,7 @@ def main():
         # save checkpoint
         if master_process and last_step:
             ckpt_path = os.path.join(
-                args.ckpt_out, f"mid-train_{args.dataset}_{args.model_depth}.pt"
+                args.ckpt_out, f"midtrain_{args.dataset}_{args.model_depth}.pt"
             )
             save_checkpoint(
                 ckpt_path,
@@ -268,7 +291,6 @@ def main():
         # train
         synchronize()
         st = time.time()
-        optimizer.zero_grad(set_to_none=True)
         loss_accum = torch.zeros(1, device=device)
 
         for grad_step in range(gradient_accum_steps):
@@ -294,9 +316,6 @@ def main():
         if ddp:
             dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
 
-        # clip gradients
-        clipped_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
         # get learning rate
         progress = step / max_steps
         lrm = get_lr_multiplier(progress)
@@ -311,6 +330,7 @@ def main():
 
         # update
         optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
 
         # logging
         synchronize()
@@ -319,14 +339,13 @@ def main():
         total_time += et - st
         total_tokens += B * T * gradient_accum_steps * ddp_world_size
         print0(
-            f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | norm {clipped_norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | total tokens: {total_tokens:,}"
+            f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | total tokens: {total_tokens:,}"
         )
 
         if master_process and send_to_wandb:
             wandb_run.log(
                 {
                     "train/loss": loss_accum.item(),
-                    "train/grad_norm_clipped": clipped_norm.item(),
                     **lr_logs,
                     "perf/tok_per_sec": tok_sec,
                     "progress/total_time": total_time,

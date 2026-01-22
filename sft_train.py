@@ -19,11 +19,41 @@ import torch.distributed as dist
 from utils import (
     dataset_defaults,
     load_checkpoint,
-    parse_args,
     print0,
     sample_from_model,
     save_checkpoint,
 )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # dataset
+    parser.add_argument(
+        "--dataset", type=str, choices=["fw", "ts", "tsk"], default="fw"
+    )
+
+    # model
+    parser.add_argument(
+        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
+    )
+
+    # batch
+    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
+    parser.add_argument("--total_batch_size", type=int, default=524288)
+    parser.add_argument("--target_examples_per_step", type=int, default=32)
+
+    # training
+    parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--eval_every", type=int, default=None)
+    parser.add_argument("--save_every", type=int, default=None)
+
+    # paths
+    parser.add_argument("--data_root", type=str, default=None)
+    parser.add_argument("--ckpt_out", type=str, default="./ckps")
+    parser.add_argument("--resume_ckpt", type=str, default=None)
+
+    return parser.parse_args()
 
 
 def main():
@@ -91,23 +121,20 @@ def main():
     # Load pretrained state for model and optimizer
     checkpoint = (
         args.resume_ckpt
-        or f"{args.ckpt_out}/mid-train_{args.dataset}_{args.model_depth}.pt"
+        or f"{args.ckpt_out}/midtrain_{args.dataset}_{args.model_depth}.pt"
     )
     ckpt, _ = load_checkpoint(
         path=checkpoint, model=model, optimizer=None, device=device
     )
 
     # initiatlize the optimizer
-    optimizer = configure_optimizer(model)
+    optimizer = configure_optimizer(
+        model, total_batch_size_tokens=args.total_batch_size
+    )
 
     # wrap the model in ddp
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
-
-    # scale down learning rates for sft training
-    for pg in optimizer.param_groups:
-        pg["lr"] *= 0.02
-        pg["initial_lr"] = pg["lr"]
 
     if master_process:
         print(
@@ -146,13 +173,13 @@ def main():
     # SFT datasets
     train_task = TaskMixture(
         [
-            Arc(subset="ARC-Easy"),
-            Arc(subset="ARC-Challenge"),
-            GSM8K(),
-            SmolTalkTask(stop=10_000),
-            SpellingTask(size=500),
+            Arc(subset="ARC-Easy"),  # 2.3k
+            Arc(subset="ARC-Challenge"),  # 1.1k
+            GSM8K(),  # 8k
+            SmolTalkTask(stop=10_000),  # 10k
+            SpellingTask(size=500),  # # 500
         ]
-    )
+    )  # Total = 2.3k + 1.1k + 8k + 10k + 0.5k = 21.9k
 
     train_loader = sft_loader(
         dataset=train_task,
@@ -188,7 +215,7 @@ def main():
         last_step = step == max_steps - 1
 
         # validation loss (just do it twice)
-        if master_process and (last_step or step % (max_steps // 2) == 0):
+        if master_process and step > 0 and (last_step or step % (max_steps // 2) == 0):
             model.eval()
             with torch.no_grad():
                 val_loss_steps = 10
@@ -215,7 +242,7 @@ def main():
         # save checkpoint
         if master_process and last_step:
             ckpt_path = os.path.join(
-                args.ckpt_out, f"sft-train_{args.dataset}_{args.model_depth}.pt"
+                args.ckpt_out, f"sfttrain_{args.dataset}_{args.model_depth}.pt"
             )
             save_checkpoint(
                 ckpt_path,
@@ -255,9 +282,6 @@ def main():
             dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
             dist.all_reduce(num_tokens, op=dist.ReduceOp.SUM)
 
-        # clip gradients
-        clipped_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
         # get learning rate
         progress = step / max_steps
         lrm = get_lr_multiplier(progress)
@@ -282,13 +306,12 @@ def main():
         num_tokens_item = num_tokens.item()
         step_loss = loss_accum.item()
         print0(
-            f"step: {step:05d}/{max_steps:05d} | step loss: {step_loss:.4f} | norm {clipped_norm:.4f} | time: {(et-st)*1000:.2f}ms | examples/sec: {examples_per_sec:.2f} | total examples: {total_examples:,} | num_tokens: {num_tokens_item:,}"
+            f"step: {step:05d}/{max_steps:05d} | step loss: {step_loss:.4f} | time: {(et-st)*1000:.2f}ms | examples/sec: {examples_per_sec:.2f} | total examples: {total_examples:,} | num_tokens: {num_tokens_item:,}"
         )
         if master_process and send_to_wandb:
             wandb_run.log(
                 {
                     "train/loss": step_loss,
-                    "train/grad_norm_clipped": clipped_norm.item(),
                     **lr_logs,
                     "perf/examples_per_sec": examples_per_sec,
                     "progress/total_examples": total_examples,

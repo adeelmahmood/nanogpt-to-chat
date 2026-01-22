@@ -387,14 +387,15 @@ def get_param_groups(model):
     embed_params = []
     lm_head_params = []
     matrix_params = []
-    scalar_params = []
+    resid_lambda_params = []
+    other_scalar_params = []
 
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
 
         if name == "resid_lambdas":
-            scalar_params.append(p)
+            resid_lambda_params.append(p)
         elif "transformer.wte" in name:
             embed_params.append(p)
         elif "lm_head" in name:
@@ -402,57 +403,106 @@ def get_param_groups(model):
         elif p.dim() >= 2:
             matrix_params.append(p)
         else:
-            scalar_params.append(p)
+            other_scalar_params.append(p)
 
-    return embed_params, lm_head_params, matrix_params, scalar_params
+    return (
+        embed_params,
+        lm_head_params,
+        matrix_params,
+        resid_lambda_params,
+        other_scalar_params,
+    )
 
 
-def configure_optimizer(model):
-    embed, lm_head, matrix, scalar = get_param_groups(model)
+import math
+import torch
+
+
+def configure_optimizer(
+    model, total_batch_size_tokens, reference_batch_size_tokens=524_288, stage="pre"
+):
+    (
+        embed,
+        lm_head,
+        matrix,
+        resid_lambdas,
+        other_scalars,
+    ) = get_param_groups(model)
+
+    # per stage params
+    if stage == "mid":
+        base_embed_lr = 0.2
+        init_lr_frac = 1.0
+        matrix_weight_decay = 0.0
+    elif stage == "sft":
+        base_embed_lr = 0.2
+        init_lr_frac = 0.02
+        matrix_weight_decay = 0.0
+    else:  # pre stage
+        base_embed_lr = 0.24
+        init_lr_frac = 1.0
+        matrix_weight_decay = 0.01
+
+    # -----------------------------
+    # Scaling factors
+    # -----------------------------
+    d_model = model.config.n_emb
+    dmodel_lr_scale = (d_model / 768) ** -0.5
+    batch_lr_scale = math.sqrt(total_batch_size_tokens / reference_batch_size_tokens)
+    lr_scale = dmodel_lr_scale * batch_lr_scale
+
+    # -----------------------------
+    # Base LRs
+    # -----------------------------
+    embed_lr = base_embed_lr * lr_scale * init_lr_frac
+    lm_lr = 0.0032 * lr_scale * init_lr_frac
+    matrix_lr = 0.015 * lr_scale * init_lr_frac
+
+    scalar_lr = 5e-4 * init_lr_frac
+    resid_lr = scalar_lr * 0.01
 
     optim_groups = [
-        # embeddings: highest LR, no decay
-        {"params": embed, "lr": 2.0e-3, "weight_decay": 0.0, "name": "embed"},
-        # lm head: slightly lower
-        {"params": lm_head, "lr": 8.0e-4, "weight_decay": 0.0, "name": "lm_head"},
-        # transformer matrices: main bulk
-        {"params": matrix, "lr": 1.5e-3, "weight_decay": 0.05, "name": "matrix"},
-        # norms / scalars
-        {"params": scalar, "lr": 2.0e-4, "weight_decay": 0.0, "name": "scalar"},
+        {
+            "params": embed,
+            "lr": embed_lr,
+            "weight_decay": 0.0,
+            "name": "embed",
+        },
+        {
+            "params": lm_head,
+            "lr": lm_lr,
+            "weight_decay": 0.0,
+            "name": "lm_head",
+        },
+        {
+            "params": matrix,
+            "lr": matrix_lr,
+            "weight_decay": matrix_weight_decay,
+            "name": "matrix",
+        },
+        {
+            "params": resid_lambdas,
+            "lr": resid_lr,
+            "weight_decay": 0.0,
+            "name": "resid_lambda",
+        },
+        {
+            "params": other_scalars,
+            "lr": scalar_lr,
+            "weight_decay": 0.0,
+            "name": "scalar",
+        },
     ]
 
     optimizer = torch.optim.AdamW(
         optim_groups,
-        betas=(0.9, 0.95),
-        eps=1e-8,
+        betas=(0.8, 0.95),
+        eps=1e-10,
         fused=torch.cuda.is_available(),
     )
 
+    # store initial LR for scheduling
     for group in optimizer.param_groups:
         group["initial_lr"] = group["lr"]
 
     return optimizer
-
-
-# commenting in favor of split optimizers
-# def configure_optimizer(model, lr):
-#   decay, no_decay = [], []
-#   for name, p in model.named_parameters():
-#     if not p.requires_grad:
-#       continue
-#     if p.dim() >= 2:
-#       decay.append(p)
-#     else:
-#       no_decay.append(p)
-
-#   optim_params = [
-#       { "params": decay, "weight_decay": 0.1 },
-#       { "params": no_decay, "weight_decay": 0.0 }
-#   ]
-
-#   try:
-#     optimizer = torch.optim.AdamW(optim_params, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=True)
-#   except TypeError:
-#     optimizer = torch.optim.AdamW(optim_params, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=False)
-
-#   return optimizer

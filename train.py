@@ -1,3 +1,4 @@
+import argparse
 from contextlib import nullcontext
 from datetime import datetime
 import math
@@ -17,11 +18,41 @@ from utils import (
     dataset_defaults,
     get_lr_multiplier,
     load_checkpoint,
-    parse_args,
     print0,
     restore_rng,
     save_checkpoint,
 )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # dataset
+    parser.add_argument(
+        "--dataset", type=str, choices=["fw", "ts", "tsk"], default="fw"
+    )
+
+    # model
+    parser.add_argument(
+        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
+    )
+
+    # batch
+    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=16)
+    parser.add_argument("--total_batch_size", type=int, default=524288)
+    parser.add_argument("--compile_model", type=bool, default=True)
+
+    # training
+    parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--eval_every", type=int, default=None)
+    parser.add_argument("--save_every", type=int, default=None)
+
+    # paths
+    parser.add_argument("--data_root", type=str, default=None)
+    parser.add_argument("--ckpt_out", type=str, default="./ckps")
+    parser.add_argument("--resume_ckpt", type=str, default=None)
+
+    return parser.parse_args()
 
 
 def main():
@@ -82,15 +113,6 @@ def main():
     else:
         raise ValueError(f"Unknown model depth: {args.model_depth}")
 
-    model = GPTModel(config).to(device)
-
-    # initiatlize the optimizer
-    optimizer = configure_optimizer(model)
-
-    print0(
-        f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
-    )
-
     # Hyper parameters
     max_steps = args.max_steps or defaults["max_steps"]  # 19073 # 10B / 524288
     warmup_steps = int(0.01 * max_steps)  # 1% of max steps
@@ -103,10 +125,20 @@ def main():
     )
     data_set_folder = args.data_root or defaults["data_root"]
 
-    print0(f"\nB = {B}, T = {T}")
+    model = GPTModel(config).to(device)
+
+    # initiatlize the optimizer
+    optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
+
+    num_params = sum(p.nelement() for p in model.parameters())
+    print0(f"\nModel parameters: {num_params/1e6:.2f}M")
+    target_total_tokens = max_steps * total_batch_size
+
+    print0(f"B = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
     print0(f"Total batch size: {total_batch_size}")
     print0(f"Dataset folder: {data_set_folder}")
+    print0(f"Target training tokens: {target_total_tokens:,}")
 
     # data loader
     train_loader = DataLoaderLite(
@@ -251,7 +283,6 @@ def main():
         # training
         synchronize()
         st = time.time()
-        optimizer.zero_grad(set_to_none=True)
         loss_accum = torch.zeros(1, device=device)
 
         for grad_step in range(gradient_accum_steps):
@@ -278,14 +309,8 @@ def main():
         if ddp:
             dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
 
-        # clip gradients
-        norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
-        # get learning rate
-        # lr = get_lr(step, max_lr, min_lr, warmup_steps, max_steps)
-        # for pg in optimizer.param_groups:
-        #   pg["lr"] = lr
-        lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.05)
+        # get learning rate multiplier
+        lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.0)
         lr_logs = {
             "lr/multiplier": lrm,
         }
@@ -297,6 +322,7 @@ def main():
 
         # update
         optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
 
         # logging
         synchronize()
@@ -312,14 +338,13 @@ def main():
         eta_seconds = remaining_steps * avg_time_per_step
         matrix_lr = lr_logs["lr/matrix"]
         print0(
-            f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | norm {norm:.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}"
+            f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}"
         )
 
         if master_process and send_to_wandb:
             wandb_run.log(
                 {
                     "train/loss": loss_accum.item(),
-                    "train/grad_norm": norm.item(),
                     **lr_logs,
                     "perf/tok_per_sec": tok_sec,
                     "progress/total_time": total_time,

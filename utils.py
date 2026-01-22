@@ -1,40 +1,8 @@
-import argparse
 import os
 from chat import decode_with_special_tokens
 from engine import Engine, Sampler
 import torch
 import math
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    # dataset
-    parser.add_argument(
-        "--dataset", type=str, choices=["fw", "ts", "tsk"], default="tsk"
-    )
-
-    # model
-    parser.add_argument(
-        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
-    )
-
-    # batch
-    parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=4)
-    parser.add_argument("--total_batch_size", type=int, default=524288)
-    parser.add_argument("--compile_model", type=bool, default=True)
-
-    # training
-    parser.add_argument("--max_steps", type=int, default=None)
-    parser.add_argument("--eval_every", type=int, default=None)
-    parser.add_argument("--save_every", type=int, default=None)
-
-    # paths
-    parser.add_argument("--data_root", type=str, default=None)
-    parser.add_argument("--ckpt_out", type=str, default="./ckps")
-    parser.add_argument("--resume_ckpt", type=str, default=None)
-
-    return parser.parse_args()
 
 
 def save_checkpoint(

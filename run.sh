@@ -41,6 +41,7 @@ else
   read -p "Checkpoint directory [./ckps]: " CKPT_DIR
   CKPT_DIR=${CKPT_DIR:-./ckps}
 
+  echo
   echo "=============================="
   echo " MID-TRAINING SETUP "
   echo "=============================="
@@ -52,6 +53,7 @@ else
   read -p "Eval Every [$(($MID_STEPS/10))]: " MID_EVAL_EVERY
   MID_EVAL_EVERY=${MID_EVAL_EVERY:-$((MID_STEPS/10))}
 
+  echo
   echo "=============================="
   echo " SFT-TRAINING SETUP "
   echo "=============================="

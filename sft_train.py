@@ -132,7 +132,7 @@ def main():
         model, total_batch_size_tokens=args.total_batch_size, stage="sft"
     )
     for pg in optimizer.param_groups:
-        print(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
+        print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
 
     # wrap the model in ddp
     if ddp:

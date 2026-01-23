@@ -217,7 +217,7 @@ def main():
         last_step = step == max_steps - 1
 
         # validation loss (just do it twice)
-        if master_process and step > 0 and (last_step or step % (max_steps // 2) == 0):
+        if step > 0 and (last_step or step % (max_steps // 2) == 0):
             model.eval()
             with torch.no_grad():
                 val_loss_steps = 10
@@ -225,6 +225,7 @@ def main():
                 for name, loader in val_loaders.items():
                     val_loss_accum = 0.0
                     for _ in range(val_loss_steps):
+                        print0("val run")
                         x, y = next(loader)
                         with autocast_ctx:
                             _, loss = model(x, y)
@@ -237,7 +238,7 @@ def main():
                     val_metrics[f"val/{name}_loss"] = val_loss_accum.item()
                     print0(f"val/{name}_loss: {val_loss_accum.item():.4f}")
 
-            if master_process and send_to_wandb:
+            if send_to_wandb:
                 wandb_run.log(val_metrics, step=step)
             model.train()
 

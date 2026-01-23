@@ -363,7 +363,7 @@ def main():
             )
 
     if master_process:
-        model.eval()
+        raw_model.eval()
         print("Finished mitraining. Sampling...")
         sample_from_model(
             raw_model,

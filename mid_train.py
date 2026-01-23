@@ -88,8 +88,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        torch.set_float32_matmul_precision("high")
-        # torch.backends.cuda.matmul.fp32_precision = "tf32"
+        # torch.set_float32_matmul_precision("high")
+        torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)

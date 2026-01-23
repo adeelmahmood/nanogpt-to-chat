@@ -233,3 +233,20 @@ SFT_CMD=(
 
 echo
 echo "✅ Completed"
+
+
+SFT_TRAIN_CKPT="${CKPT_DIR}/sfttrain_${DATASET}_${MODEL_DEPTH}.pt"
+
+if [[ ! -f "$SFT_TRAIN_CKPT" ]]; then
+  echo "ERROR: Expected checkpoint not found:"
+  echo "  $SFT_TRAIN_CKPT"
+  exit 1
+fi
+
+echo
+SAMPLE_CMD=(
+  "${PYTHON_CMD[@]}" sample.py
+  --model_file "$SFT_TRAIN_CKPT"
+)
+
+"${SAMPLE_CMD[@]}"

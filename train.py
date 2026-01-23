@@ -40,7 +40,7 @@ def parse_args():
     # batch
     parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=16)
     parser.add_argument("--total_batch_size", type=int, default=524288)
-    parser.add_argument("--compile_model", type=bool, default=True)
+    parser.add_argument("--compile_model", type=bool, default=False)
 
     # training
     parser.add_argument("--max_steps", type=int, default=None)
@@ -197,10 +197,12 @@ def main():
         if master_process:
             print0(f"Loaded checkpoint at step={loaded_step}")
 
-    # Finalize the model
-    if device_type == "cuda":
+    # compile
+    if args.compile_model or device_type == "cuda":
         print0("Compiling model")
         model = torch.compile(model, dynamic=False)
+
+    # wrap ddp
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
 

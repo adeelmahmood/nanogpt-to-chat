@@ -88,7 +88,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        torch.set_float32_matmul_precision("high")
+        # torch.set_float32_matmul_precision("high")
+        torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)
@@ -252,7 +253,7 @@ def main():
         last_step = step == max_steps - 1
 
         # validation loss
-        if step > 0 and (step % eval_every == 0 or last_step):
+        if step > 0 and eval_every != -1 and (last_step or step % eval_every == 0):
             model.eval()
             with torch.no_grad():
                 val_loss_steps = 10

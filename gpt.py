@@ -295,6 +295,9 @@ class GPTModel(nn.Module):
         B, T = idx.shape
         cos_sin = self.cos, self.sin
 
+        if self.training:
+            kv_cache = None
+
         x = self.transformer.wte(idx)  # B, T, C (n_emb)
         if self.config.use_rope is False:
             positions = torch.arange(0, T, dtype=torch.long, device=idx.device)
@@ -461,7 +464,7 @@ def configure_optimizer(
     matrix_lr = 0.015 * lr_scale * init_lr_frac
 
     scalar_lr = 5e-4 * init_lr_frac  # LayerNorm / bias
-    resid_lr = 0.004 * init_lr_frac  # nanochat resid analogue (or 0.005)
+    resid_lr = 0.004 * init_lr_frac
 
     optim_groups = [
         {

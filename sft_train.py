@@ -87,7 +87,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        torch.set_float32_matmul_precision("high")
+        # torch.set_float32_matmul_precision("high")
+        torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)
@@ -225,7 +226,6 @@ def main():
                 for name, loader in val_loaders.items():
                     val_loss_accum = 0.0
                     for _ in range(val_loss_steps):
-                        print0("val run")
                         x, y = next(loader)
                         with autocast_ctx:
                             _, loss = model(x, y)
@@ -238,7 +238,7 @@ def main():
                     val_metrics[f"val/{name}_loss"] = val_loss_accum.item()
                     print0(f"val/{name}_loss: {val_loss_accum.item():.4f}")
 
-            if send_to_wandb:
+            if master_process and send_to_wandb:
                 wandb_run.log(val_metrics, step=step)
             model.train()
 

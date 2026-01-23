@@ -88,8 +88,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        # torch.set_float32_matmul_precision("high")
-        torch.backends.cuda.matmul.fp32_precision = "tf32"
+        torch.set_float32_matmul_precision("high")
+        # torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)
@@ -123,7 +123,7 @@ def main():
     # Load pretrained state for model and optimizer
     checkpoint = (
         args.resume_ckpt
-        or f"./{args.ckpt_out}/pretrain_{args.dataset}_{args.model_depth}.pt"
+        or f"{args.ckpt_out}/pretrain_{args.dataset}_{args.model_depth}.pt"
     )
     ckpt, _ = load_checkpoint(
         path=checkpoint, model=model, optimizer=None, device=device
@@ -149,6 +149,9 @@ def main():
         print0("Compiling model")
         model = torch.compile(model, dynamic=False)
 
+    # Store model ref for sampling
+    raw_model = model
+
     # wrap the model in ddp
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
@@ -159,7 +162,7 @@ def main():
         )
         print("Loaded pretrained model. Sampling...")
         sample_from_model(
-            model.module if ddp else model,
+            raw_model,
             tokenizer,
             device,
             "Why is sky blue?",
@@ -363,7 +366,7 @@ def main():
         model.eval()
         print("Finished mitraining. Sampling...")
         sample_from_model(
-            model.module if ddp else model,
+            raw_model,
             tokenizer,
             device,
             "Why is sky blue?",

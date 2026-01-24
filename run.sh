@@ -249,8 +249,7 @@ fi
 
 echo
 SAMPLE_CMD=(
-  "${PYTHON_CMD[@]}" sample.py
-  --model_file "$SFT_TRAIN_CKPT"
+  python sample.py --model_file "$SFT_TRAIN_CKPT"
 )
 
 echo "Running command: ${SAMPLE_CMD[*]}"

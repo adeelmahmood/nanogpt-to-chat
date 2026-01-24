@@ -88,8 +88,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        # torch.set_float32_matmul_precision("high")
-        torch.backends.cuda.matmul.fp32_precision = "tf32"
+        torch.set_float32_matmul_precision("high")
+        # torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)
@@ -160,14 +160,17 @@ def main():
         print(
             f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
         )
-        print("Loaded pretrained model. Sampling...")
-        sample_from_model(
-            raw_model,
-            tokenizer,
-            device,
-            "Why is sky blue?",
-            max_tokens=100,
-        )
+        try:
+            print("Loaded pretrained model. Sampling...")
+            sample_from_model(
+                raw_model,
+                tokenizer,
+                device,
+                "Why is sky blue?",
+                max_tokens=100,
+            )
+        except Exception as e:
+            print(f"Sampling failed: {e}, Silently continuing...")
 
     print0(f"\nB = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
@@ -204,6 +207,9 @@ def main():
         device=device,
         ddp_rank=ddp_rank,
         ddp_world_size=ddp_world_size,
+    )
+    print(
+        f"Dataset loaded. 1 epoch has {len(train_task) / (B * T * ddp_world_size)} batches"
     )
 
     val_loaders = {
@@ -363,15 +369,18 @@ def main():
             )
 
     if master_process:
-        raw_model.eval()
-        print("Finished mitraining. Sampling...")
-        sample_from_model(
-            raw_model,
-            tokenizer,
-            device,
-            "Why is sky blue?",
-            max_tokens=100,
-        )
+        try:
+            raw_model.eval()
+            print("Finished mitraining. Sampling...")
+            sample_from_model(
+                raw_model,
+                tokenizer,
+                device,
+                "Why is sky blue?",
+                max_tokens=100,
+            )
+        except Exception as e:
+            print(f"Sampling failed: {e}, Silently continuing...")
 
     if send_to_wandb and master_process:
         wandb_run.finish()

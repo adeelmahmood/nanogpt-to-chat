@@ -87,8 +87,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        # torch.set_float32_matmul_precision("high")
-        torch.backends.cuda.matmul.fp32_precision = "tf32"
+        torch.set_float32_matmul_precision("high")
+        # torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)
@@ -143,14 +143,17 @@ def main():
         print(
             f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
         )
-        print("Loaded midtrained model. Sampling...")
-        sample_from_model(
-            model.module if ddp else model,
-            tokenizer,
-            device,
-            "Why is sky blue?",
-            max_tokens=100,
-        )
+        try:
+            print("Loaded midtrained model. Sampling...")
+            sample_from_model(
+                model.module if ddp else model,
+                tokenizer,
+                device,
+                "Why is sky blue?",
+                max_tokens=100,
+            )
+        except Exception as e:
+            print(f"Sampling failed: {e}, Silently continuing...")
 
     # Hyper parameters
     max_steps = args.max_steps or 900
@@ -162,6 +165,8 @@ def main():
 
     print0(f"\nB = {B}, target_examples_per_step = {target_examples_per_step}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
+
+    eval_every = args.eval_every or (max_steps // 10)
 
     if master_process:
         print("\n======== RUN CONFIG ========")
@@ -193,6 +198,9 @@ def main():
         ddp_rank=ddp_rank,
         ddp_world_size=ddp_world_size,
     )
+    print0(
+        f"Dataset loaded. 1 epoch has {len(train_task) / (B * ddp_world_size)} batches"
+    )
 
     val_loaders = {
         "smoltalk": sft_loader(
@@ -218,7 +226,7 @@ def main():
         last_step = step == max_steps - 1
 
         # validation loss (just do it twice)
-        if step > 0 and (last_step or step % (max_steps // 2) == 0):
+        if step > 0 and eval_every != -1 and (last_step or step % eval_every == 0):
             model.eval()
             with torch.no_grad():
                 val_loss_steps = 10
@@ -324,15 +332,18 @@ def main():
             )
 
     if master_process:
-        model.eval()
-        print("Finished SFT-Training. Sampling...")
-        sample_from_model(
-            model.module if ddp else model,
-            tokenizer,
-            device,
-            "Why is sky blue?",
-            max_tokens=100,
-        )
+        try:
+            model.eval()
+            print("Finished SFT-Training. Sampling...")
+            sample_from_model(
+                model.module if ddp else model,
+                tokenizer,
+                device,
+                "Why is sky blue?",
+                max_tokens=100,
+            )
+        except Exception as e:
+            print(f"Sampling failed: {e}, Silently continuing...")
 
     if send_to_wandb and master_process:
         wandb_run.finish()

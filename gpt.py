@@ -453,7 +453,14 @@ def configure_optimizer(
     # -----------------------------
     d_model = model.config.n_emb
     dmodel_lr_scale = (d_model / 768) ** -0.5
-    batch_lr_scale = math.sqrt(total_batch_size_tokens / reference_batch_size_tokens)
+
+    # batch size based scaling for pre stage
+    if stage == "pre":
+        batch_lr_scale = math.sqrt(
+            total_batch_size_tokens / reference_batch_size_tokens
+        )
+    else:
+        batch_lr_scale = 1.0
     lr_scale = dmodel_lr_scale * batch_lr_scale
 
     # -----------------------------

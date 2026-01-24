@@ -87,8 +87,8 @@ def main():
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
-        # torch.set_float32_matmul_precision("high")
-        torch.backends.cuda.matmul.fp32_precision = "tf32"
+        torch.set_float32_matmul_precision("high")
+        # torch.backends.cuda.matmul.fp32_precision = "tf32"
 
     autocast_ctx = (
         torch.autocast(device_type=device_type, dtype=torch.bfloat16)
@@ -143,6 +143,9 @@ def main():
     print0(f"Dataset folder: {data_set_folder}")
     print0(f"Target training tokens: {target_total_tokens:,}")
     print0(f"Tokens to params ration: {target_total_tokens / num_params:.2f}")
+    print0(
+        f"Based on ~20 T-to-P ratio, the steps should be {(20 * num_params) / total_batch_size:.2f}"
+    )
 
     # data loader
     train_loader = DataLoaderLite(

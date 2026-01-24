@@ -12,8 +12,8 @@ class GPTConfig:
     block_size: int = 1024
     vocab_size: int = 50304  # 50257
     n_layer: int = 12
-    n_head: int = 12
-    n_kv_head: int = 12 // 4
+    n_head: int = 6
+    n_kv_head: int = 6
     n_emb: int = 768
     logit_softcap: float = 15.0
 

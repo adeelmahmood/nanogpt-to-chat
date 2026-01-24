@@ -20,8 +20,8 @@ else
   read -p "Dataset (fw / ts / tsk) [fw]: " DATASET
   DATASET=${DATASET:-fw}
 
-  read -p "Model depth (d12 / d20) [d20]: " MODEL_DEPTH
-  MODEL_DEPTH=${MODEL_DEPTH:-d20}
+  read -p "Model depth (d12 / d20) [d12]: " MODEL_DEPTH
+  MODEL_DEPTH=${MODEL_DEPTH:-d12}
 
   read -p "Batch size (4 / 8 / 16 / 32) [16]: " BATCH_SIZE
   BATCH_SIZE=${BATCH_SIZE:-16}
@@ -161,6 +161,9 @@ TRAIN_CMD=(
   "${RESUME_ARGS[@]}"
 )
 
+# print command
+echo "Running command: ${TRAIN_CMD[*]}"
+
 "${TRAIN_CMD[@]}"
 
 # PRETRAIN CHECKPOINT
@@ -193,9 +196,9 @@ MID_CMD=(
   --ckpt_out "$CKPT_DIR"
 )
 
+echo "Running command: ${MID_CMD[*]}"
 "${MID_CMD[@]}"
 
-echo
 echo "✅ Completed"
 
 
@@ -229,6 +232,7 @@ SFT_CMD=(
   --ckpt_out "$CKPT_DIR"
 )
 
+echo "Running command: ${SFT_CMD[*]}"
 "${SFT_CMD[@]}"
 
 echo
@@ -249,4 +253,5 @@ SAMPLE_CMD=(
   --model_file "$SFT_TRAIN_CKPT"
 )
 
+echo "Running command: ${SAMPLE_CMD[*]}"
 "${SAMPLE_CMD[@]}"

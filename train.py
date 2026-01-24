@@ -365,13 +365,13 @@ def main():
     print0(f"Training completed {datetime.now()}")
 
     # Delete all step checkpoints
-    if master_process:
-        print0("Deleting step checkpoints as training has completed")
-        for f in os.listdir(args.ckpt_out):
-            if f.startswith(
-                f"pretrain_{args.dataset}_{args.model_depth}_"
-            ) and f.endswith(".pt"):
-                os.remove(os.path.join(args.ckpt_out, f))
+    # if master_process:
+    #     print0("Deleting step checkpoints as training has completed")
+    #     for f in os.listdir(args.ckpt_out):
+    #         if f.startswith(
+    #             f"pretrain_{args.dataset}_{args.model_depth}_"
+    #         ) and f.endswith(".pt"):
+    #             os.remove(os.path.join(args.ckpt_out, f))
 
     if send_to_wandb and master_process:
         wandb_run.finish()

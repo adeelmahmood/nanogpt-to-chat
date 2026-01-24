@@ -208,9 +208,6 @@ def main():
         ddp_rank=ddp_rank,
         ddp_world_size=ddp_world_size,
     )
-    print(
-        f"Dataset loaded. 1 epoch has {len(train_task) / (B * T * ddp_world_size)} batches"
-    )
 
     val_loaders = {
         "smoltalk": midtraining_loader_bos(

@@ -1,32 +1,25 @@
 import argparse
-from chat import decode_with_special_tokens, get_special_tokens
-from engine import Engine, Sampler
-from gpt import GPTConfig, GPTModel
 import torch
 import tiktoken
 
+from chat import decode_with_special_tokens, get_special_tokens
+from engine import Engine, Sampler
+from gpt import GPTConfig, GPTModel
 from utils import load_checkpoint
 
 
 # ANSI color codes for terminal
 class Colors:
-    HEADER = "\033[95m"
+    GREEN = "\033[92m"
     BLUE = "\033[94m"
     CYAN = "\033[96m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
     BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
     END = "\033[0m"
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-
-    # model file
     parser.add_argument("--model_file", type=str, required=True)
-
     return parser.parse_args()
 
 
@@ -36,75 +29,75 @@ def main():
         device = "cuda"
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         device = "mps"
+
     tokenizer = tiktoken.get_encoding("gpt2")
+    special = get_special_tokens()
 
     args = parse_args()
 
-    # Load checkpoint
+    # Load model
     model = GPTModel(GPTConfig(vocab_size=50304))
-    model = model.to(device)
-    load_checkpoint(path=args.model_file, model=model, device=device, optimizer=None)
-
+    model.to(device)
+    load_checkpoint(
+        path=args.model_file,
+        model=model,
+        device=device,
+        optimizer=None,
+    )
     model.eval()
 
     print(f"{Colors.GREEN}{Colors.BOLD}Model loaded for inference{Colors.END}")
 
-    special = get_special_tokens()
-
-    # Configuration for sampling
+    # Sampling config
     prompts = [
-        "Why is sky blue?",
-        "what is 2+2?",
+        "hi",
+        "Why is the sky blue?",
+        "What is 2 + 2?",
         "What is the capital of France?",
-        # "Why is sky blue?",
-        # "Explain how photosynthesis works.",
-        # "Write a short poem about winter.",
-        # "What are the benefits of exercise?",
     ]
 
     max_new_tokens = 50
     temperature = 0.7
     top_k = 50
 
-    print(
-        f"{Colors.CYAN}{Colors.BOLD}Generating samples for {len(prompts)} prompts{Colors.END}"
-    )
+    print(f"{Colors.CYAN}{Colors.BOLD}Generating chat-formatted samples{Colors.END}")
 
-    # Generate sample for each prompt
     for i, text in enumerate(prompts):
-        # Set seed for reproducibility
         torch.manual_seed(1337 + i)
-        torch.cuda.manual_seed(1337 + i)
+        if device == "cuda":
+            torch.cuda.manual_seed(1337 + i)
 
-        # Create sampler and engine
         sampler = Sampler(temperature=temperature, top_k=top_k)
         engine = Engine(model, sampler, use_kv_cache=True)
 
-        # Encode prompt
-        idx = torch.tensor([tokenizer.encode(text)], dtype=torch.long, device=device)
+        # ---- CHAT FORMATTING ----
+        conversation = [
+            special.bos,
+            special.user_start,
+            *tokenizer.encode(text),
+            special.user_end,
+            special.assistant_start,
+        ]
 
-        # Generate tokens
-        token_ids, state = engine.generate(
-            idx, max_new_tokens=max_new_tokens, stop_token_id=special.assistant_end
+        idx = torch.tensor([conversation], dtype=torch.long, device=device)
+
+        token_ids, _ = engine.generate(
+            idx,
+            max_new_tokens=max_new_tokens,
+            stop_token_id=special.assistant_end,
         )
 
-        token_ids_list = token_ids.squeeze(0).tolist()
+        generated = token_ids[0, len(conversation) :].tolist()
 
-        # check if assistant start is present in the generated tokens
-        if special.assistant_start in token_ids_list:
-            # start from here
-            start_idx = token_ids_list.index(special.assistant_start)
-            token_ids_list = token_ids_list[start_idx + 1 :]
+        if not generated or generated[-1] != special.assistant_end:
+            generated.append(special.assistant_end)
 
-        # Decode and print result
-        decoded_text = decode_with_special_tokens(token_ids_list, tokenizer)
+        decoded = decode_with_special_tokens(generated, tokenizer)
 
-        print(
-            f"\n{Colors.BLUE}{Colors.BOLD}Prompt {i + 1}:{Colors.END} {Colors.HEADER}{text}{Colors.END}"
-        )
-        print(decoded_text)
+        print(f"\n{Colors.BLUE}{Colors.BOLD}Prompt {i + 1}:{Colors.END} {text}")
+        print(decoded)
 
-    print(f"{Colors.GREEN}{Colors.BOLD}All samples generated{Colors.END}")
+    print(f"\n{Colors.GREEN}{Colors.BOLD}All samples generated{Colors.END}")
 
 
 if __name__ == "__main__":

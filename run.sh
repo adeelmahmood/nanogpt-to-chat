@@ -247,6 +247,19 @@ if [[ ! -f "$SFT_TRAIN_CKPT" ]]; then
   exit 1
 fi
 
+# EVAL
+echo
+echo "Starting evaluation..."
+EVAL_CMD=(
+  python eval.py --model_file "$SFT_TRAIN_CKPT"
+)
+
+echo "Running command: ${EVAL_CMD[*]}"
+"${EVAL_CMD[@]}"
+
+# ------------------------------
+
+# SAMPLING
 echo
 SAMPLE_CMD=(
   python sample.py --model_file "$SFT_TRAIN_CKPT"

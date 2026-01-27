@@ -36,7 +36,7 @@ def main():
     args = parse_args()
 
     # Load model
-    model = GPTModel(GPTConfig(vocab_size=50304))
+    model = GPTModel(GPTConfig())
     model.to(device)
     load_checkpoint(
         path=args.model_file,

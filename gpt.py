@@ -161,7 +161,14 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x, cos_sin, kv_cache: KVCache | None = None, layer_idx=0):
         B, T, C = x.shape
-        past_len = kv_cache.seq_len() if kv_cache is not None else 0
+        # safe past length for RoPE
+        past_len = 0
+        if kv_cache is not None:
+            k_past, _ = kv_cache.get(layer_idx)
+            if k_past is not None:
+                # k_past has shape (B, n_kv_head, past_len, head_dim) or (nH, past_len, Hs)
+                # we stored k as (B, n_kv_head, T, Hs), so size(-2) is past sequence length
+                past_len = k_past.size(-2)
 
         # project Q, K, V
         if not self.config.use_gqa:

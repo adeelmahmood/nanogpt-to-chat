@@ -4,7 +4,7 @@ from datetime import datetime
 import math
 from dataloader_sft import sft_loader
 from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
-from tasks import GSM8K, MMLU, Arc, SmolTalkTask, SpellingTask, TaskMixture
+from tasks import GSM8K, Arc, SmolTalkTask, SpellingTask, TaskMixture
 import torch
 import time
 import os
@@ -20,7 +20,6 @@ from utils import (
     dataset_defaults,
     load_checkpoint,
     print0,
-    sample_from_model,
     save_checkpoint,
 )
 
@@ -139,21 +138,9 @@ def main():
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
 
-    if master_process:
-        print(
-            f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
-        )
-        try:
-            print("Loaded midtrained model. Sampling...")
-            sample_from_model(
-                model.module if ddp else model,
-                tokenizer,
-                device,
-                "Why is sky blue?",
-                max_tokens=100,
-            )
-        except Exception as e:
-            print(f"Sampling failed: {e}, Silently continuing...")
+    print0(
+        f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
+    )
 
     # Hyper parameters
     max_steps = args.max_steps or 900
@@ -327,20 +314,6 @@ def main():
                 },
                 step=step,
             )
-
-    if master_process:
-        try:
-            model.eval()
-            print("Finished SFT-Training. Sampling...")
-            sample_from_model(
-                model.module if ddp else model,
-                tokenizer,
-                device,
-                "Why is sky blue?",
-                max_tokens=100,
-            )
-        except Exception as e:
-            print(f"Sampling failed: {e}, Silently continuing...")
 
     if send_to_wandb and master_process:
         wandb_run.finish()

@@ -48,7 +48,7 @@ class Engine:
 
     @torch.inference_mode()
     def prefill(self, tokens, state):
-        logits, _ = self.model(tokens, kv_cache=None)
+        logits, _ = self.model(tokens, kv_cache=state.kv_cache)
         return logits[:, -1, :]
 
     @torch.inference_mode()

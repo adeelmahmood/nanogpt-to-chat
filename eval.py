@@ -1,3 +1,4 @@
+import argparse
 import re
 from chat import decode_with_special_tokens, get_special_tokens, render_conversation
 from engine import Engine, Sampler
@@ -25,7 +26,6 @@ class EvalTask:
 
 
 class MMLUEval(MMLU):
-
     def build_prompt(self, example):
         return {"messages": [example["messages"][0]]}
 
@@ -40,12 +40,11 @@ class MMLUEval(MMLU):
             correct=(pred == gold),
             pred=pred,
             gold=gold,
-            mixture=self.__class__.__name__,
+            mixture=f"{self.__class__.__name__}",
         )
 
 
 class ARCEval(Arc):
-
     def build_prompt(self, example):
         return {"messages": [example["messages"][0]]}
 
@@ -55,15 +54,14 @@ class ARCEval(Arc):
         pred = match.group(1) if match else ""
 
         return EvalResult(
-            pred == gold,
-            pred,
-            gold,
-            mixture=self.__class__.__name__,
+            correct=(pred == gold),
+            pred=pred,
+            gold=gold,
+            mixture=f"{self.__class__.__name__}",
         )
 
 
 class GSM8KEval(GSM8K):
-
     def build_prompt(self, example):
         # only the user message
         return {"messages": [example["messages"][0]]}
@@ -79,12 +77,12 @@ class GSM8KEval(GSM8K):
             correct=(pred == gold),
             pred=pred,
             gold=gold,
-            mixture=self.__class__.__name__,
+            mixture=f"{self.__class__.__name__}",
         )
 
 
 class EvalRunner:
-    def __init__(self, model, tokenizer, max_new_tokens=10):
+    def __init__(self, model, tokenizer, max_new_tokens=100):
         self.model = model
         self.tokenizer = tokenizer
         self.engine = Engine(
@@ -97,9 +95,14 @@ class EvalRunner:
         correct = 0
         results = []
 
-        n = len(task) if limit is None else limit
+        special = get_special_tokens()
 
+        n = len(task) if limit is None else limit
         for i in range(n):
+            torch.manual_seed(1337 + i)
+            if device == "cuda":
+                torch.cuda.manual_seed(1337 + i)
+
             # handle Task or TaskMixture
             if hasattr(task, "tasks") and hasattr(task, "indices"):
                 # TaskMixture: indices holds tuples (task_idx, example_idx)
@@ -115,16 +118,16 @@ class EvalRunner:
             prompt = eval_task.build_prompt(example)
             ids, masks = render_conversation(prompt, tokenizer=self.tokenizer)
             # add assistant start token
-            ids.append(get_special_tokens().assistant_start)
+            ids.append(special.assistant_start)
             masks.append(0)
-            idx = torch.tensor(ids, dtype=torch.long).unsqueeze(0)
-            prompt_len = len(ids)
+            idx = torch.tensor(ids, dtype=torch.long, device=device).unsqueeze(0)
+            prompt_len = idx.shape[1]
 
             # generate
             out_ids, _ = self.engine.generate(
                 idx,
                 max_new_tokens=self.max_new_tokens,
-                stop_token_id=get_special_tokens().assistant_end,
+                stop_token_id=special.assistant_end,
             )
 
             # decode only the assistant text
@@ -138,6 +141,9 @@ class EvalRunner:
             total += 1
             correct += int(result.correct)
 
+            if i % 10 == 0:
+                print(f"Step {i+1}/{n} - Acc so far: {correct/total:.4f}")
+
         return {
             "accuracy": correct / total,
             "total": total,
@@ -146,15 +152,32 @@ class EvalRunner:
         }
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_file", type=str, required=True)
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     import tiktoken
 
-    tokenizer = tiktoken.get_encoding("gpt2")
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+
+    args = parse_args()
+
     device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+
+    tokenizer = tiktoken.get_encoding("gpt2")
+
     model = GPTModel(GPTConfig(vocab_size=50304))
     model.to(device)
     load_checkpoint(
-        path="./ckps/fw/1-24-second-attempt/sfttrain_fw_d12.pt",
+        path=args.model_file,
         model=model,
         device=device,
         optimizer=None,
@@ -162,7 +185,12 @@ if __name__ == "__main__":
     model.eval()
 
     task = TaskMixture(
-        [ARCEval(subset="ARC-Easy", stop=10), MMLUEval(stop=10), GSM8KEval(stop=10)]
+        [
+            ARCEval(subset="ARC-Easy", stop=25),
+            ARCEval(subset="ARC-Challenge", stop=25),
+            MMLUEval(stop=50),
+            GSM8KEval(stop=50),
+        ]
     )
     runner = EvalRunner(model=model, tokenizer=tokenizer)
     results = runner.run_task(task)

@@ -21,7 +21,6 @@ from utils import (
     dataset_defaults,
     load_checkpoint,
     print0,
-    sample_from_model,
     save_checkpoint,
 )
 
@@ -156,21 +155,9 @@ def main():
     if ddp:
         model = DDP(model, device_ids=[ddp_local_rank])
 
-    if master_process:
-        print(
-            f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
-        )
-        try:
-            print("Loaded pretrained model. Sampling...")
-            sample_from_model(
-                raw_model,
-                tokenizer,
-                device,
-                "Why is sky blue?",
-                max_tokens=100,
-            )
-        except Exception as e:
-            print(f"Sampling failed: {e}, Silently continuing...")
+    print0(
+        f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"
+    )
 
     print0(f"\nB = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
@@ -364,20 +351,6 @@ def main():
                 },
                 step=step,
             )
-
-    if master_process:
-        try:
-            raw_model.eval()
-            print("Finished mitraining. Sampling...")
-            sample_from_model(
-                raw_model,
-                tokenizer,
-                device,
-                "Why is sky blue?",
-                max_tokens=100,
-            )
-        except Exception as e:
-            print(f"Sampling failed: {e}, Silently continuing...")
 
     if send_to_wandb and master_process:
         wandb_run.finish()

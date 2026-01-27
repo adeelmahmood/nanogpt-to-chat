@@ -50,10 +50,12 @@ def main():
 
     # Sampling config
     prompts = [
-        "hi",
+        "Who are you?",
         "Why is the sky blue?",
         "What is 2 + 2?",
-        "What is the capital of France?",
+        "Which city is the capital of France?",
+        "Is ice cold or hot?",
+        "Write a poem about cats",
     ]
 
     max_new_tokens = 50

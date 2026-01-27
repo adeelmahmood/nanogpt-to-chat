@@ -21,6 +21,7 @@ class Sampler:
 
         probs = F.softmax(logits, dim=-1)
 
+        # top k sampling
         if self.top_k is not None:
             topk_probs, topk_indices = torch.topk(probs, self.top_k, dim=-1)
             ix = torch.multinomial(topk_probs, 1)
@@ -47,7 +48,7 @@ class Engine:
 
     @torch.inference_mode()
     def prefill(self, tokens, state):
-        logits, _ = self.model(tokens, kv_cache=state.kv_cache)
+        logits, _ = self.model(tokens, kv_cache=None)
         return logits[:, -1, :]
 
     @torch.inference_mode()

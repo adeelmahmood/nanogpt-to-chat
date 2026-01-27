@@ -1,7 +1,8 @@
 import random
 from datasets import load_dataset
 
-from utils import print0, render_mcq
+from chat import render_conversation
+from utils import extract_final_number, print0, render_mcq
 
 
 class Task:
@@ -173,13 +174,21 @@ class GSM8K(Task):
         question = row["question"]
         answer = row["answer"]
 
-        # Remove the final #### answer marker if you want
-        # or keep it — both are fine for midtraining
-        answer = answer.strip()
+        final = extract_final_number(answer)
+        if final is None:
+            raise ValueError(f"Could not extract final number from answer: {answer}")
 
         messages = [
-            {"role": "user", "content": question},
-            {"role": "assistant", "content": answer},
+            {
+                "role": "user",
+                "content": (
+                    question + "\n\nRespond with the final answer only as a number."
+                ),
+            },
+            {
+                "role": "assistant",
+                "content": final,
+            },
         ]
 
         return {"messages": messages}
@@ -219,7 +228,24 @@ class SpellingTask(Task):
 
 
 if __name__ == "__main__":
-    spelling = SpellingTask(split="train", size=1000)
-    # print 10 examples
-    for i in range(10):
-        print0(spelling.get_example(i))
+    import tiktoken
+
+    tokenizer = tiktoken.get_encoding("gpt2")
+
+    task = TaskMixture(
+        [
+            SmolTalkTask(),  # 460k
+            MMLU(),  # 100k
+            GSM8K(),  # 8k
+            SpellingTask(size=200_000),  # 200k
+        ]
+    )
+
+    total_examples = len(task)
+    total_tokens = 0
+    for i, t in enumerate(task):
+        ids, _ = render_conversation(conversation=t, tokenizer=tokenizer)
+        total_tokens += len(ids)
+        if i % 500 == 0 or i == total_examples - 1:
+            print(f"step {i}. tokens so far: {total_tokens:,}")
+    print(f"\nTotal tokens: {total_tokens:,}")

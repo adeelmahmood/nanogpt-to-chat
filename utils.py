@@ -1,4 +1,5 @@
 import os
+import re
 from chat import decode_with_special_tokens
 from engine import Engine, Sampler
 import torch
@@ -157,3 +158,14 @@ def dataset_defaults(name):
         )
     else:
         raise ValueError(name)
+
+
+FINAL_NUM_RE = re.compile(r"####\s*([\-0-9\.,]+)")
+
+
+# used for gsm8k dataset
+def extract_final_number(answer: str) -> str:
+    match = FINAL_NUM_RE.search(answer)
+    if not match:
+        return None
+    return match.group(1).replace(",", "").strip()

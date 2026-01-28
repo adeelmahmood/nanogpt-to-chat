@@ -86,3 +86,11 @@ EOF
 
 echo "✅ Setup complete. Log out and back in."
 
+
+
+# extra useful commands
+# install git
+# sudo yum install git -y
+# install pip
+# sudo yum install python3-pip -y
+

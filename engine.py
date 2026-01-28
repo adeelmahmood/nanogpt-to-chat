@@ -1,3 +1,4 @@
+from chat import decode_with_special_tokens
 from gpt import KVCache
 import torch
 import torch.nn as nn
@@ -109,3 +110,62 @@ class Engine:
             state.stop_reason = "completed"
 
         return idx, state
+
+    @torch.inference_mode()
+    def stream(self, idx, max_new_tokens, stop_token_id=None):
+        B, T = idx.shape
+        assert B == 1, "Engine.stream supports B=1"
+
+        # truncate context if needed
+        if T > self.model.config.block_size:
+            idx = idx[:, -self.model.config.block_size :]
+            T = idx.size(1)
+
+        # init state
+        kv_cache = KVCache(self.model.config.n_layer) if self.use_kv_cache else None
+        state = EngineState(kv_cache=kv_cache)
+
+        # prefill (NO kv-cache mutation)
+        next_logits = self.prefill(idx, state)
+
+        for _ in range(max_new_tokens):
+            # context window safety (same as generate)
+            if (
+                state.kv_cache is not None
+                and state.kv_cache.seq_len() >= self.model.config.block_size
+            ):
+                state.stopped = True
+                state.stop_reason = "Context window exceeded"
+                break
+
+            # sample next token
+            idx_next = self.sampler.sample(next_logits)
+            token_id = idx_next.item()
+            token_text = decode_with_special_tokens(
+                [token_id], tokenizer=self.model.tokenizer
+            )
+
+            # yield immediately
+            yield token_id, token_text
+
+            # stop token check
+            if stop_token_id is not None and token_id == stop_token_id:
+                state.stopped = True
+                state.stop_reason = "Stop token generated"
+                break
+
+            state.generated += 1
+
+            # decode next token (THIS mutates KV cache)
+            if state.kv_cache is not None:
+                next_logits = self.decode_next(idx_next, state)
+            else:
+                # slow path (rare for streaming)
+                idx = torch.cat([idx, idx_next], dim=1)
+                if idx.size(1) > self.model.config.block_size:
+                    idx = idx[:, -self.model.config.block_size :]
+                logits, _ = self.model(idx)
+                next_logits = logits[:, -1, :]
+
+        if not state.stopped:
+            state.stop_reason = "completed"

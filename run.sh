@@ -41,6 +41,9 @@ else
   read -p "Checkpoint directory [./ckps]: " CKPT_DIR
   CKPT_DIR=${CKPT_DIR:-./ckps}
 
+  read -p "Auto resume for pretraining? (y/N) [N]: " AUTO_RESUME_PRETRAIN
+  AUTO_RESUME_PRETRAIN=${AUTO_RESUME_PRETRAIN:-N}
+
   echo
   echo "=============================="
   echo " MID-TRAINING SETUP "
@@ -82,6 +85,7 @@ SAVE_EVERY=$SAVE_EVERY
 MID_EVAL_EVERY=$MID_EVAL_EVERY
 SFT_EVAL_EVERY=$SFT_EVAL_EVERY
 CKPT_DIR=$CKPT_DIR  
+AUTO_RESUME_PRETRAIN=$AUTO_RESUME_PRETRAIN
 EOF
 
   echo
@@ -119,15 +123,15 @@ LATEST_PRETRAIN_CKPT=$(
 RESUME_ARGS=()
 
 if [[ -n "$LATEST_PRETRAIN_CKPT" ]]; then
-  if [[ -t 0 ]]; then
+  if [[ "$AUTO_RESUME_PRETRAIN" == "Y" || "$AUTO_RESUME_PRETRAIN" == "y" ]]; then
+    RESUME_ARGS=(--resume_ckpt "$LATEST_PRETRAIN_CKPT")
+  elif [[ -t 0 ]]; then
     read -p "Resume pretraining from checkpoint $(basename "$LATEST_PRETRAIN_CKPT")? [Y/n]: " RESUME_CONFIRM
     RESUME_CONFIRM=${RESUME_CONFIRM:-Y}
-  else
-    RESUME_CONFIRM="Y"
-  fi
-
-  if [[ "$RESUME_CONFIRM" == "Y" || "$RESUME_CONFIRM" == "y" ]]; then
-    RESUME_ARGS=(--resume_ckpt "$LATEST_PRETRAIN_CKPT")
+    
+    if [[ "$RESUME_CONFIRM" == "Y" || "$RESUME_CONFIRM" == "y" ]]; then
+      RESUME_ARGS=(--resume_ckpt "$LATEST_PRETRAIN_CKPT")
+    fi
   fi
 fi
 

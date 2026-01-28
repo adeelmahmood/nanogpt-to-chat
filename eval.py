@@ -82,7 +82,7 @@ class GSM8KEval(GSM8K):
 
 
 class EvalRunner:
-    def __init__(self, model, tokenizer, max_new_tokens=100):
+    def __init__(self, model, tokenizer, max_new_tokens=10):
         self.model = model
         self.tokenizer = tokenizer
         self.engine = Engine(

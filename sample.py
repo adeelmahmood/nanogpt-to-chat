@@ -20,6 +20,11 @@ class Colors:
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_file", type=str, required=True)
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Use streaming token generation instead of generate()",
+    )
     return parser.parse_args()
 
 
@@ -56,6 +61,7 @@ def main():
         "Which city is the capital of France?",
         "Is ice cold or hot?",
         "Write a poem about cats",
+        # "Write a story about a cat who loved to eat",
     ]
 
     max_new_tokens = 50
@@ -82,22 +88,45 @@ def main():
         ]
 
         idx = torch.tensor([conversation], dtype=torch.long, device=device)
-
-        token_ids, _ = engine.generate(
-            idx,
-            max_new_tokens=max_new_tokens,
-            stop_token_id=special.assistant_end,
-        )
-
-        generated = token_ids[0, len(conversation) :].tolist()
-
-        if not generated or generated[-1] != special.assistant_end:
-            generated.append(special.assistant_end)
-
-        decoded = decode_with_special_tokens(generated, tokenizer)
-
         print(f"\n{Colors.BLUE}{Colors.BOLD}Prompt {i + 1}:{Colors.END} {text}")
-        print(decoded)
+
+        if args.stream:
+            # -------- STREAMING PATH --------
+            print(
+                f"{Colors.CYAN}{Colors.BOLD}Assistant:{Colors.END} ", end="", flush=True
+            )
+
+            generated = []
+            for token_id, token_text in engine.stream(
+                idx,
+                max_new_tokens=max_new_tokens,
+                stop_token_id=special.assistant_end,
+            ):
+                generated.append(token_id)
+                print(token_text, end="", flush=True)
+
+            # ensure assistant_end exists for consistency
+            # if not generated or generated[-1] != special.assistant_end:
+            #     generated.append(special.assistant_end)
+
+            print()  # newline after streaming
+
+        else:
+            # -------- NON-STREAMING PATH --------
+            token_ids, _ = engine.generate(
+                idx,
+                max_new_tokens=max_new_tokens,
+                stop_token_id=special.assistant_end,
+            )
+
+            generated = token_ids[0, len(conversation) :].tolist()
+
+            # if not generated or generated[-1] != special.assistant_end:
+            #     generated.append(special.assistant_end)
+
+            decoded = decode_with_special_tokens(generated, tokenizer)
+
+            print(decoded)
 
     print(f"\n{Colors.GREEN}{Colors.BOLD}All samples generated{Colors.END}")
 

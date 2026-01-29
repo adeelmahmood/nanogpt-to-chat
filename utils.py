@@ -36,7 +36,8 @@ def save_checkpoint(
         "val_loader_state": val_loader.state_dict() if val_loader is not None else None,
     }
 
-    torch.save(ckpt, path)
+    torch.save(ckpt, path + ".tmp")
+    os.replace(path + ".tmp", path)
     print0(f"Checkpoint saved at {path}")
 
 
@@ -138,26 +139,6 @@ def print0(s="", **kwargs):
     ddp_rank = int(os.environ.get("RANK", 0))
     if ddp_rank == 0:
         print(s, **kwargs)
-
-
-def dataset_defaults(name):
-    if name == "fw":
-        return dict(
-            data_root="download/edu_fineweb10B",
-            max_steps=10_000,
-        )
-    elif name == "ts":
-        return dict(
-            data_root="download/tinystories",
-            max_steps=1_000,
-        )
-    elif name == "tsk":
-        return dict(
-            data_root="download/tinysk",
-            max_steps=500,
-        )
-    else:
-        raise ValueError(name)
 
 
 FINAL_NUM_RE = re.compile(r"####\s*([\-0-9\.,]+)")

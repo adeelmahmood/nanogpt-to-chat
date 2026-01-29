@@ -8,7 +8,24 @@ from dataclasses import dataclass
 
 
 @dataclass
-class GPTConfig:
+class GPTConfigD2:  # only used for local experiments
+    block_size: int = 64
+    vocab_size: int = 50304  # 50257
+    n_layer: int = 2
+    n_head: int = 2
+    n_kv_head: int = 2
+    n_emb: int = 128
+    logit_softcap: float = 15.0
+
+    use_rope: bool = True
+    use_rmsnorm: bool = True
+    use_qk_norm: bool = True
+    use_gqa: bool = True
+    use_kv_cache: bool = True
+
+
+@dataclass
+class GPTConfig:  # default d12 model
     block_size: int = 1024
     vocab_size: int = 50304  # 50257
     n_layer: int = 12
@@ -25,7 +42,7 @@ class GPTConfig:
 
 
 @dataclass
-class GPTConfigD20:
+class GPTConfigD20:  # larger d20 model
     block_size: int = 2048
     vocab_size: int = 50304
     n_layer: int = 20
@@ -39,6 +56,19 @@ class GPTConfigD20:
     use_qk_norm: bool = True
     use_gqa: bool = True
     use_kv_cache: bool = True
+
+
+def get_gpt_config(depth):
+    if depth == "d2":
+        return GPTConfigD2()
+    elif depth == "d12":
+        return GPTConfig()
+    elif depth == "d20":
+        return GPTConfigD20()
+    else:
+        raise ValueError(
+            f"No configuration available for depth {depth}. Available depths: d2, d12, d20"
+        )
 
 
 def rope_cache(seq_len, head_dim, base: int = 10000):

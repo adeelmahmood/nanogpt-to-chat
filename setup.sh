@@ -32,32 +32,26 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install numpy tiktoken datasets transformers importlib-metadata wandb
 
 echo "== Environment variables =="
-cat >> ~/.bashrc <<EOF
-
-# ===== Instance store ML config =====
+sudo tee /etc/profile.d/ml.sh > /dev/null <<EOF
 export PIP_CACHE_DIR=$MOUNT_POINT/pip_cache
 
-# Hugging Face
 export HF_HOME=$MOUNT_POINT/hf_cache
 export HF_DATASETS_CACHE=$MOUNT_POINT/hf_cache/datasets
 export HUGGINGFACE_HUB_CACHE=$MOUNT_POINT/hf_cache/hub
 export TRANSFORMERS_CACHE=$MOUNT_POINT/hf_cache/transformers
 
-# Torch
 export TORCH_EXTENSIONS_DIR=$MOUNT_POINT/torch_extensions
 
-# Weights & Biases
 export WANDB_DIR=$MOUNT_POINT/wandb/run
 export WANDB_CACHE_DIR=$MOUNT_POINT/wandb/cache
 export WANDB_CONFIG_DIR=$MOUNT_POINT/wandb/config
 
-# netrc (for wandb / hf auth)
 export NETRC=$MOUNT_POINT/.netrc
-
-# Auto-activate venv
-source $VENV_DIR/bin/activate
-# ===================================
 EOF
+
+# activate python env in current shell
+source /etc/profile.d/ml.sh
+source $VENV_DIR/bin/activate
 
 echo "== netrc setup =="
 touch $MOUNT_POINT/.netrc
@@ -69,8 +63,6 @@ rm -rf ~/.cache/{huggingface,wandb,pip} ~/.local/share/wandb || true
 
 cd /mnt/instancestore
 git clone https://github.com/adeelmahmood/nanogpt-to-chat.git
-
-source ~/.bashrc
 
 echo "== Validation =="
 python - <<EOF

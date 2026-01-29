@@ -3,7 +3,11 @@ from contextlib import nullcontext
 from datetime import datetime
 import math
 from dataloader import DataLoaderLite
-from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
+from gpt import (
+    GPTModel,
+    configure_optimizer,
+    get_gpt_config,
+)
 import torch
 import time
 import os
@@ -15,7 +19,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 from utils import (
-    dataset_defaults,
     get_lr_multiplier,
     load_checkpoint,
     print0,
@@ -34,7 +37,7 @@ def parse_args():
 
     # model
     parser.add_argument(
-        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
+        "--model_depth", type=str, choices=["d12", "d20", "d2"], default="d12"
     )
 
     # batch
@@ -48,7 +51,7 @@ def parse_args():
     parser.add_argument("--save_every", type=int, default=None)
 
     # paths
-    parser.add_argument("--data_root", type=str, default=None)
+    parser.add_argument("--dataset_dir", type=str, default=None)
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
@@ -58,7 +61,6 @@ def parse_args():
 def main():
 
     args = parse_args()
-    defaults = dataset_defaults(args.dataset)
 
     # distributed data parallel setup
     ddp = int(os.environ.get("RANK", -1)) != -1
@@ -107,15 +109,10 @@ def main():
     torch.cuda.manual_seed(base_seed)
 
     # initialize the model
-    if args.model_depth == "d12":
-        config = GPTConfig()
-    elif args.model_depth == "d20":
-        config = GPTConfigD20()
-    else:
-        raise ValueError(f"Unknown model depth: {args.model_depth}")
+    config = get_gpt_config(args.model_depth)
 
     # Hyper parameters
-    max_steps = args.max_steps or defaults["max_steps"]  # 19073 # 10B / 524288
+    max_steps = args.max_steps  # 19073 # 10B / 524288
     warmup_steps = int(0.01 * max_steps)  # 1% of max steps
 
     B = args.batch_size
@@ -124,7 +121,6 @@ def main():
     gradient_accum_steps = max(
         1, math.ceil(total_batch_size / (B * T * ddp_world_size))
     )
-    data_set_folder = args.data_root or defaults["data_root"]
 
     model = GPTModel(config).to(device)
 
@@ -140,7 +136,7 @@ def main():
     print0(f"B = {B}, T = {T}")
     print0(f"Using gradient accum steps: {gradient_accum_steps}")
     print0(f"Total batch size: {total_batch_size}")
-    print0(f"Dataset folder: {data_set_folder}")
+    print0(f"Dataset folder: {args.dataset_dir}")
     print0(f"Target training tokens: {target_total_tokens:,}")
     print0(f"Tokens to params ration: {target_total_tokens / num_params:.2f}")
     print0(
@@ -154,7 +150,7 @@ def main():
         process_rank=ddp_rank,
         num_processes=ddp_world_size,
         split="train",
-        data_root=data_set_folder,
+        data_root=args.dataset_dir,
         master_process=master_process,
     )
     val_loader = DataLoaderLite(
@@ -163,7 +159,7 @@ def main():
         process_rank=ddp_rank,
         num_processes=ddp_world_size,
         split="val",
-        data_root=data_set_folder,
+        data_root=args.dataset_dir,
         master_process=master_process,
     )
 
@@ -217,7 +213,7 @@ def main():
     if master_process:
         print("\n======== RUN CONFIG ========")
         print(f"dataset        : {args.dataset}")
-        print(f"data_root      : {data_set_folder}")
+        print(f"dataset_dir    : {args.dataset_dir}")
         print(f"model_depth    : {args.model_depth}")
         print(f"batch_size     : {B}")
         print(f"block_size     : {config.block_size}")

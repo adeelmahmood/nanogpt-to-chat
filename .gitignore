@@ -23,6 +23,4 @@ runs
 
 wandb
 
-run_params.env
-
 .DS_Store

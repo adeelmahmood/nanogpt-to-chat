@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from datetime import datetime
 import math
 from dataloader_midtrain_bos import midtraining_loader_bos
-from gpt import GPTConfig, GPTConfigD20, GPTModel, configure_optimizer
+from gpt import GPTModel, configure_optimizer, get_gpt_config
 from sft_train import parse_args
 from tasks import GSM8K, MMLU, Arc, SmolTalkTask, SpellingTask, TaskMixture
 import torch
@@ -18,7 +18,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 from utils import (
-    dataset_defaults,
     load_checkpoint,
     print0,
     save_checkpoint,
@@ -35,7 +34,7 @@ def parse_args():
 
     # model
     parser.add_argument(
-        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
+        "--model_depth", type=str, choices=["d12", "d20", "d2"], default="d12"
     )
 
     # batch
@@ -58,7 +57,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    defaults = dataset_defaults(args.dataset)
 
     # distributed data parallel setup
     ddp = int(os.environ.get("RANK", -1)) != -1
@@ -109,12 +107,7 @@ def main():
     tokenizer = tiktoken.get_encoding("gpt2")
 
     # initialize the model
-    if args.model_depth == "d12":
-        config = GPTConfig()
-    elif args.model_depth == "d20":
-        config = GPTConfigD20()
-    else:
-        raise ValueError(f"Unknown model depth: {args.model_depth}")
+    config = get_gpt_config(args.model_depth)
 
     # Initialize the model
     model = GPTModel(config).to(device)

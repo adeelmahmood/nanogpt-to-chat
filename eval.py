@@ -2,7 +2,7 @@ import argparse
 import re
 from chat import decode_with_special_tokens, get_special_tokens, render_conversation
 from engine import Engine, Sampler
-from gpt import GPTConfig, GPTModel
+from gpt import GPTConfig, GPTModel, get_gpt_config
 from tasks import GSM8K, MMLU, Arc, TaskMixture
 import torch
 
@@ -155,6 +155,13 @@ class EvalRunner:
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_file", type=str, required=True)
+    parser.add_argument(
+        "--model_depth",
+        type=str,
+        choices=["d12", "d20", "d2"],
+        default="d12",
+        help="Model depth configuration",
+    )
     return parser.parse_args()
 
 
@@ -174,7 +181,7 @@ if __name__ == "__main__":
 
     tokenizer = tiktoken.get_encoding("gpt2")
 
-    model = GPTModel(GPTConfig(vocab_size=50304))
+    model = GPTModel(get_gpt_config(args.model_depth))
     model.to(device)
     load_checkpoint(
         path=args.model_file,

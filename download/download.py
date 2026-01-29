@@ -6,35 +6,48 @@ import numpy as np
 
 import argparse
 
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    "--ds",
-    type=str,
-    choices=["fw", "ts"],
-    help="Dataset to download: fw (FineWeb Edu) | ts (The Stack)",
-)
-
-args = parser.parse_args()
-if args.ds == "fw":
-    dataset_name = "HuggingFaceFW/fineweb-edu"
-    remote_name = "sample-10BT"
-    local_dir = "download/edu_fineweb10B"
-elif args.ds == "ts":
-    dataset_name = "roneneldan/TinyStories"
-    remote_name = ""
-    local_dir = "download/tinystories"
-else:
-    raise ValueError("Invalid dataset choice. Use --ds fw or --ds ts")
-
-shard_size = int(1e8)  # 100M tokens per shard
-
-# create the dir
-os.makedirs(local_dir, exist_ok=True)
-
 # tokenizer init must be top-level
 tokenizer = tiktoken.get_encoding("gpt2")
 eot = tokenizer.eot_token
+
+shard_size = int(1e8)  # 100M tokens per shard
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--ds",
+        type=str,
+        choices=["fw", "ts"],
+        required=True,
+        help="Dataset to download: fw (FineWeb Edu) | ts (Tiny Stories)",
+    )
+
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        required=True,
+        help="Remote dataset name for HuggingFace datasets.",
+    )
+
+    parser.add_argument(
+        "--remote_name",
+        type=str,
+        default="",
+        required=False,
+        help="Remote dataset name for HuggingFace datasets.",
+    )
+
+    parser.add_argument(
+        "--local_dir",
+        type=str,
+        required=True,
+        help="Local directory to save the dataset.",
+    )
+
+    args = parser.parse_args()
+    return args
 
 
 def tokenize(doc):
@@ -45,17 +58,25 @@ def tokenize(doc):
 
 
 def main():
+    args = parse_args()
+    dataset_name = args.dataset_name
+    remote_name = args.remote_name
+    local_dir = args.local_dir
+
+    # create the dir
+    os.makedirs(local_dir, exist_ok=True)
+
     # check if files already there
-    existing_shards = [f for f in os.listdir(local_dir) if f.endswith(".npy")]
-    if existing_shards:
-        print(f"Found {len(existing_shards)} existing shards in {local_dir}")
-        print("Skipping download.")
-        return
+    # existing_shards = [f for f in os.listdir(local_dir) if f.endswith(".npy")]
+    # if existing_shards:
+    #     print(f"Found {len(existing_shards)} existing shards in {local_dir}")
+    #     print("Skipping download.")
+    #     return
 
     # download dataset inside main
     ds = load_dataset(dataset_name, name=remote_name, split="train")
 
-    nproc = max(1, os.cpu_count() // 2)
+    nproc = max(1, os.cpu_count() - 2)
     print(f"num of processes={nproc}")
 
     with mp.Pool(nproc) as pool:

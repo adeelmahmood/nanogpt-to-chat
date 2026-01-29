@@ -4,7 +4,7 @@ import tiktoken
 
 from chat import decode_with_special_tokens, get_special_tokens
 from engine import Engine, Sampler
-from gpt import GPTConfig, GPTModel
+from gpt import GPTModel, get_gpt_config
 from utils import load_checkpoint
 
 
@@ -20,6 +20,13 @@ class Colors:
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_file", type=str, required=True)
+    parser.add_argument(
+        "--model_depth",
+        type=str,
+        choices=["d12", "d20", "d2"],
+        default="d12",
+        help="Model depth configuration",
+    )
     parser.add_argument(
         "--stream",
         action="store_true",
@@ -41,7 +48,7 @@ def main():
     args = parse_args()
 
     # Load model
-    model = GPTModel(GPTConfig())
+    model = GPTModel(get_gpt_config(args.model_depth))
     model.to(device)
     load_checkpoint(
         path=args.model_file,

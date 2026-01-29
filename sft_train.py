@@ -121,7 +121,7 @@ def main():
 
     # wrap the model in ddp
     if ddp:
-        model = DDP(model, device_ids=[ddp_local_rank])
+        model = DDP(model, device_ids=[ddp_local_rank] if using_cuda else None)
 
     print0(
         f"Model parameters: {sum(p.nelement() for p in model.parameters())/1e6:.2f}M"

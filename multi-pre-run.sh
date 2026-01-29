@@ -91,7 +91,7 @@ fi
 
 LATEST_PRETRAIN_CKPT=$(
   ls -1 "${RUN_DIR}/checkpoints/pretrain_${DATASET}_${MODEL_DEPTH}_"*.pt 2>/dev/null \
-  | grep -v "\.rank*"
+  | grep -v "\.rank*" \
   | sort \
   | tail -n 1
 )

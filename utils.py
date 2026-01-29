@@ -48,7 +48,7 @@ def save_checkpoint(
     }
     rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
     torch.save(rng_ckpt, rng_path)
-    print0(f"Checkpoint (rng) saved at {rng_path}")
+    print(f"Checkpoint (rng) saved at {rng_path}")
 
 
 def load_checkpoint(
@@ -85,6 +85,8 @@ def load_checkpoint(
     # load per rank rng
     restore_rng(path=path, device=device, rank=rank)
 
+    print(f"Checkpoint loaded from {path} at step {step}")
+
     # return the checkpoint and step
     return ckpt, step
 
@@ -99,11 +101,14 @@ def restore_rng(path: str, device: str, rank: int):
 
     try:
         torch.set_rng_state(rng["torch"])
+        print(f"Restored torch RNG state from {rng_path}")
     except Exception:
         pass
+
     if torch.cuda.is_available() and rng.get("cuda", None) is not None:
         try:
             torch.cuda.set_rng_state_all(rng["cuda"])
+            print(f"Restored cuda RNG state from {rng_path}")
         except Exception:
             pass
 

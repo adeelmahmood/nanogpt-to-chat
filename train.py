@@ -64,14 +64,24 @@ def main():
 
     # distributed data parallel setup
     ddp = int(os.environ.get("RANK", -1)) != -1
+    using_cuda = torch.cuda.is_available()
+
     if ddp:
         # backend from env variable (override for testing)
-        backend = os.environ.get("DDP_BACKEND", "nccl")
+        backend = os.environ.get("DDP_BACKEND", "nccl" if using_cuda else "gloo")
         init_process_group(backend=backend)
+
         ddp_rank = int(os.environ["RANK"])
         ddp_local_rank = int(os.environ["LOCAL_RANK"])
         ddp_world_size = int(os.environ["WORLD_SIZE"])
-        device = f"cuda:{ddp_local_rank}"
+
+        if using_cuda:
+            device = torch.device(f"cuda:{ddp_local_rank}")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+
         torch.cuda.set_device(device)
         master_process = ddp_rank == 0
     else:
@@ -207,7 +217,7 @@ def main():
 
     # wrap ddp
     if ddp:
-        model = DDP(model, device_ids=[ddp_local_rank])
+        model = DDP(model, device_ids=[ddp_local_rank] if using_cuda else None)
 
     eval_every = args.eval_every or (max_steps // 10)
     save_every = args.save_every or (max_steps // 10)

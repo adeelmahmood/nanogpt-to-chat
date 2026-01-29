@@ -1,5 +1,5 @@
 import os
-from random import random
+import random
 import re
 
 import numpy as np
@@ -40,11 +40,14 @@ def save_checkpoint(
         os.replace(path + ".tmp", path)
         print0(f"Checkpoint (model) saved at {path}")
 
-    # per rank rng state
-    rng_state = get_rng_state()
-    rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
-    torch.save(rng_state, rng_path)
-    print(f"RNG state saved at {rng_path}")
+    try:
+        # per rank rng state
+        rng_state = get_rng_state()
+        rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
+        torch.save(rng_state, rng_path)
+        print(f"RNG state saved at {rng_path}")
+    except Exception as e:
+        pass
 
 
 def load_checkpoint(
@@ -78,11 +81,14 @@ def load_checkpoint(
 
     step = int(ckpt.get("step", -1))
 
-    # load per rank rng
-    rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
-    rng_state = torch.load(rng_path, map_location=device, weights_only=False)
-    set_rng_state(rng_state)
-    print(f"RNG state restored from {rng_path}")
+    try:
+        # load per rank rng state
+        rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
+        rng_state = torch.load(rng_path, map_location=device, weights_only=False)
+        set_rng_state(rng_state)
+        print(f"RNG state restored from {rng_path}")
+    except Exception as e:
+        pass
 
     # return the checkpoint and step
     return ckpt, step

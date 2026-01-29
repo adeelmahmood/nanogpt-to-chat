@@ -77,12 +77,13 @@ def main():
 
         if using_cuda:
             device = torch.device(f"cuda:{ddp_local_rank}")
+            torch.cuda.set_device(device)
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             device = torch.device("mps")
         else:
             device = torch.device("cpu")
 
-        torch.cuda.set_device(device)
+        torch.set_device(device)
         master_process = ddp_rank == 0
     else:
         ddp_rank = 0
@@ -91,13 +92,13 @@ def main():
         master_process = True
         # attempt to autodetect device
         device = "cpu"
-        if torch.cuda.is_available():
+        if using_cuda:
             device = "cuda"
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             device = "mps"
 
     send_to_wandb = int(os.environ.get("SEND_TO_WANDB", -1)) != -1
-    device_type = "cuda" if torch.cuda.is_available() else "cpu"
+    device_type = "cuda" if using_cuda else "cpu"
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
@@ -118,7 +119,8 @@ def main():
     # set seeds
     base_seed = 1337 + ddp_rank
     torch.manual_seed(base_seed)
-    torch.cuda.manual_seed(base_seed)
+    if using_cuda:
+        torch.cuda.manual_seed(base_seed)
 
     # initialize the model
     config = get_gpt_config(args.model_depth)

@@ -27,7 +27,7 @@ else
   read -p "SFT eval every: " SFT_EVAL_EVERY; SFT_EVAL_EVERY=${SFT_EVAL_EVERY:-$((SFT_STEPS/10))}
 fi
 
-RUN_DIR="runs/$(date +%Y%m%d_%H)_${DATASET}_${MODEL_DEPTH}"
+RUN_DIR="runs/$(date +%-m%-d)_${DATASET}_${MODEL_DEPTH}"
 CKPT_DIR="${RUN_DIR}/checkpoints"
 mkdir -p "$CKPT_DIR"
 
@@ -87,7 +87,7 @@ find_latest_ckpt() {
 }
 
 # ---------- PRETRAIN ----------
-LATEST_PRETRAIN_CKPT=$(find_latest_ckpt "${CKPT_DIR}/pretrain_${DATASET}_${MODEL_DEPTH}_"*.pt)
+LATEST_PRETRAIN_CKPT=$(find_latest_ckpt "${CKPT_DIR}/pretrain_${DATASET}_${MODEL_DEPTH}_*.pt")
 
 RESUME_ARGS=()
 

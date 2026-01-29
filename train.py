@@ -164,7 +164,7 @@ def main():
 
         ckpt, loaded_step = load_checkpoint(
             path=args.resume_ckpt,
-            model=model.module if ddp else model,
+            model=model.module if ddp and hasattr(model, "module") else model,
             optimizer=optimizer,
             device=device,
             strict=True,
@@ -261,7 +261,7 @@ def main():
             ckpt_path = os.path.join(args.ckpt_out, ckpt_name)
             save_checkpoint(
                 ckpt_path,
-                model.module if ddp else model,
+                model.module if ddp and hasattr(model, "module") else model,
                 optimizer,
                 step=step,
                 config=config,

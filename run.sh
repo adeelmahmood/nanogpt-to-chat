@@ -97,17 +97,19 @@ fi
 
 
 echo; echo "Running pretraining..."
-"${PYTHON_CMD[@]}" train.py \
-  --dataset "$DATASET" \
-  --dataset_dir "$DATASET_DIR" \
-  --model_depth "$MODEL_DEPTH" \
-  --batch_size "$BATCH_SIZE" \
-  --total_batch_size "$TOTAL_BATCH_SIZE" \
-  --max_steps "$TRAIN_STEPS" \
-  --eval_every "$EVAL_EVERY" \
-  --save_every "$SAVE_EVERY" \
-  --ckpt_out "$CKPT_DIR" \
-  "${RESUME_ARGS[@]}"
+PRETRAIN_CMD=("${PYTHON_CMD[@]}" train.py 
+  --dataset "$DATASET" 
+  --dataset_dir "$DATASET_DIR" 
+  --model_depth "$MODEL_DEPTH" 
+  --batch_size "$BATCH_SIZE" 
+  --total_batch_size "$TOTAL_BATCH_SIZE" 
+  --max_steps "$TRAIN_STEPS" 
+  --eval_every "$EVAL_EVERY" 
+  --save_every "$SAVE_EVERY" 
+  --ckpt_out "$CKPT_DIR" 
+  "${RESUME_ARGS[@]}")
+echo "Command: ${PRETRAIN_CMD[*]}"
+"${PRETRAIN_CMD[@]}"
 
 # sync checkpoints
 if [[ -n "${BUCKET:-}" ]]; then
@@ -122,7 +124,7 @@ fi
 
 # ---------- MIDTRAIN ----------
 echo; echo "Running midtraining..."
-"${PYTHON_CMD[@]}" mid_train.py \
+MIDTRAIN_CMD=("${PYTHON_CMD[@]}" mid_train.py \
   --dataset "$DATASET" \
   --model_depth "$MODEL_DEPTH" \
   --batch_size "$BATCH_SIZE" \
@@ -131,7 +133,8 @@ echo; echo "Running midtraining..."
   --max_steps "$MID_STEPS" \
   --eval_every "$MID_EVAL_EVERY" \
   --save_every "$SAVE_EVERY" \
-  --ckpt_out "$CKPT_DIR"
+  --ckpt_out "$CKPT_DIR")
+echo "Command: ${MIDTRAIN_CMD[*]}"
 
 # sync checkpoints
 if [[ -n "${BUCKET:-}" ]]; then
@@ -146,7 +149,7 @@ fi
 
 # ---------- SFT ----------
 echo; echo "Running sft-training..."
-"${PYTHON_CMD[@]}" sft_train.py \
+SFTTRAIN_CMD=("${PYTHON_CMD[@]}" sft_train.py \
   --dataset "$DATASET" \
   --model_depth "$MODEL_DEPTH" \
   --batch_size "$BATCH_SIZE" \
@@ -155,7 +158,10 @@ echo; echo "Running sft-training..."
   --max_steps "$SFT_STEPS" \
   --eval_every "$SFT_EVAL_EVERY" \
   --save_every "$SAVE_EVERY" \
-  --ckpt_out "$CKPT_DIR"
+  --ckpt_out "$CKPT_DIR")
+echo "Command: ${SFTTRAIN_CMD[*]}"
+"${SFTTRAIN_CMD[@]}"
+
 
 # sync checkpoints
 if [[ -n "${BUCKET:-}" ]]; then

@@ -65,7 +65,9 @@ def main():
     # distributed data parallel setup
     ddp = int(os.environ.get("RANK", -1)) != -1
     if ddp:
-        init_process_group(backend="nccl")
+        # backend from env variable (override for testing)
+        backend = os.environ.get("DDP_BACKEND", "nccl")
+        init_process_group(backend=backend)
         ddp_rank = int(os.environ["RANK"])
         ddp_local_rank = int(os.environ["LOCAL_RANK"])
         ddp_world_size = int(os.environ["WORLD_SIZE"])

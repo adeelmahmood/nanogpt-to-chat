@@ -83,7 +83,6 @@ def main():
         else:
             device = torch.device("cpu")
 
-        torch.set_device(device)
         master_process = ddp_rank == 0
     else:
         ddp_rank = 0

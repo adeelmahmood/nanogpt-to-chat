@@ -35,8 +35,10 @@ fi
 # Only populate dataset if local dir is empty
 if [[ -z "$(ls -A "${DATASET_DIR}" 2>/dev/null)" ]]; then
 
-  echo "Syncing dataset from S3..."
-  aws s3 sync "s3://$BUCKET/${DATASET_DIR##download/}/" "$DATASET_DIR/" --only-show-errors || true
+  if [[ -n "${BUCKET:-}" ]]; then
+    echo "Syncing dataset from S3..."
+    aws s3 sync "s3://$BUCKET/${DATASET_DIR##download/}/" "$DATASET_DIR/" --only-show-errors || true
+  fi
 
   # If still empty, download from source
   if [[ -z "$(ls -A "$DATASET_DIR" 2>/dev/null)" ]]; then
@@ -48,7 +50,9 @@ if [[ -z "$(ls -A "${DATASET_DIR}" 2>/dev/null)" ]]; then
       --local_dir "$DATASET_DIR/"
 
     echo "Syncing dataset back to S3..."
-    aws s3 sync "$DATASET_DIR/" "s3://$BUCKET/${DATASET_DIR##download/}/" --only-show-errors || true
+    if [[ -n "${BUCKET:-}" ]]; then
+      aws s3 sync "$DATASET_DIR/" "s3://$BUCKET/${DATASET_DIR##download/}/" --only-show-errors || true
+    fi
   fi
 fi
 
@@ -57,25 +61,29 @@ fi
 # CHECKPOINT PRELOAD
 ############################################
 
-echo
-echo "Retrieving existing checkpoints from S3..."
-aws s3 sync "s3://$BUCKET/${RUN_DIR}/checkpoints/" "${RUN_DIR}/checkpoints/" || true
+if [[ -n "${BUCKET:-}" ]]; then
+  echo
+  echo "Retrieving existing checkpoints from S3..."
+  aws s3 sync "s3://$BUCKET/${RUN_DIR}/checkpoints/" "${RUN_DIR}/checkpoints/" || true
+fi
 
 ############################################
 # BACKGROUND CHECKPOINT SYNC (5 min)
 ############################################
 
-(
-  while true; do
-    aws s3 sync "${RUN_DIR}/checkpoints/" \
-      "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
-      --exclude "*.tmp" \
-      --only-show-errors || true
-    sleep 300
-  done
-) &
-SYNC_PID=$!
-trap "kill $SYNC_PID 2>/dev/null || true" EXIT
+if [[ -n "${BUCKET:-}" ]]; then
+  (
+    while true; do
+      aws s3 sync "${RUN_DIR}/checkpoints/" \
+        "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
+        --exclude "*.tmp" \
+        --only-show-errors || true
+      sleep 300
+    done
+  ) &
+  SYNC_PID=$!
+  trap "kill $SYNC_PID 2>/dev/null || true" EXIT
+fi
 
 ############################################
 # RESUME LOGIC
@@ -160,12 +168,14 @@ python sample.py --model_file "$PRETRAIN_CKPT" --model_depth "$MODEL_DEPTH"
 # FINAL SYNC
 ############################################
 
-echo
-echo "Final checkpoint sync..."
-aws s3 sync "${RUN_DIR}/checkpoints/" \
-  "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
-  --exclude "*.tmp" \
-  --only-show-errors || true
+if [[ -n "${BUCKET:-}" ]]; then
+  echo
+  echo "Final checkpoint sync..."
+  aws s3 sync "${RUN_DIR}/checkpoints/" \
+    "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
+    --exclude "*.tmp" \
+    --only-show-errors || true
+fi
 
 echo
 echo "✅ Run complete"

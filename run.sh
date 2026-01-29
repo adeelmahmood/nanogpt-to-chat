@@ -135,6 +135,7 @@ MIDTRAIN_CMD=("${PYTHON_CMD[@]}" mid_train.py \
   --save_every "$SAVE_EVERY" \
   --ckpt_out "$CKPT_DIR")
 echo "Command: ${MIDTRAIN_CMD[*]}"
+"${MIDTRAIN_CMD[@]}"
 
 # sync checkpoints
 if [[ -n "${BUCKET:-}" ]]; then

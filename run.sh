@@ -83,7 +83,7 @@ fi
 # ---------- resume helper ----------
 find_latest_ckpt() {
   pattern="$1"
-  ls -1 $pattern 2>/dev/null | sort | tail -n 1 || true
+  ls -1 $pattern 2>/dev/null | grep -v "\.rank*" | sort | tail -n 1 || true
 }
 
 # ---------- PRETRAIN ----------

@@ -91,6 +91,7 @@ fi
 
 LATEST_PRETRAIN_CKPT=$(
   ls -1 "${RUN_DIR}/checkpoints/pretrain_${DATASET}_${MODEL_DEPTH}_"*.pt 2>/dev/null \
+  | grep -v "\.rank*"
   | sort \
   | tail -n 1
 )
@@ -130,17 +131,22 @@ fi
 echo
 echo "Starting pretraining..."
 
-"${PYTHON_CMD[@]}" train.py \
-  --dataset "$DATASET" \
-  --dataset_dir "${DATASET_DIR}" \
-  --model_depth "$MODEL_DEPTH" \
-  --batch_size "$BATCH_SIZE" \
-  --total_batch_size "$TOTAL_BATCH_SIZE" \
-  --max_steps "$TRAIN_STEPS" \
-  --eval_every "$EVAL_EVERY" \
-  --save_every "$SAVE_EVERY" \
-  --ckpt_out "${RUN_DIR}/checkpoints" \
+PRETRAIN_CMD=(
+  "${PYTHON_CMD[@]}" train.py
+  --dataset "$DATASET"
+  --dataset_dir "${DATASET_DIR}"
+  --model_depth "$MODEL_DEPTH"
+  --batch_size "$BATCH_SIZE"
+  --total_batch_size "$TOTAL_BATCH_SIZE"
+  --max_steps "$TRAIN_STEPS"
+  --eval_every "$EVAL_EVERY"
+  --save_every "$SAVE_EVERY"
+  --ckpt_out "${RUN_DIR}/checkpoints"
   "${RESUME_ARGS[@]}"
+)
+
+echo "Running command: ${PRETRAIN_CMD[*]}"
+"${PRETRAIN_CMD[@]}"
 
 PRETRAIN_CKPT="${RUN_DIR}/checkpoints/pretrain_${DATASET}_${MODEL_DEPTH}.pt"
 if [[ ! -f "$PRETRAIN_CKPT" ]]; then

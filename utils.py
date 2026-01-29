@@ -1,5 +1,8 @@
 import os
+from random import random
 import re
+
+import numpy as np
 from chat import decode_with_special_tokens
 from engine import Engine, Sampler
 import torch
@@ -38,17 +41,10 @@ def save_checkpoint(
         print0(f"Checkpoint (model) saved at {path}")
 
     # per rank rng state
-    rng_ckpt = {
-        "rng_state": {
-            "torch": torch.get_rng_state(),
-            "cuda": (
-                torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
-            ),
-        },
-    }
+    rng_state = get_rng_state()
     rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
-    torch.save(rng_ckpt, rng_path)
-    print(f"Checkpoint (rng) saved at {rng_path}")
+    torch.save(rng_state, rng_path)
+    print(f"RNG state saved at {rng_path}")
 
 
 def load_checkpoint(
@@ -83,34 +79,32 @@ def load_checkpoint(
     step = int(ckpt.get("step", -1))
 
     # load per rank rng
-    restore_rng(path=path, device=device, rank=rank)
-
-    print(f"Checkpoint loaded from {path} at step {step}")
+    rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
+    rng_state = torch.load(rng_path, map_location=device, weights_only=False)
+    set_rng_state(rng_state)
+    print(f"RNG state restored from {rng_path}")
 
     # return the checkpoint and step
     return ckpt, step
 
 
-def restore_rng(path: str, device: str, rank: int):
-    rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
-    ckpt = torch.load(rng_path, map_location=device, weights_only=False)
-    rng = ckpt.get("rng_state", None)
+def get_rng_state():
+    state = {
+        "torch": torch.get_rng_state(),
+        "numpy": np.random.get_state(),
+        "python": random.getstate(),
+    }
+    if torch.cuda.is_available():
+        state["cuda"] = torch.cuda.get_rng_state()
+    return state
 
-    if rng is None:
-        return
 
-    try:
-        torch.set_rng_state(rng["torch"])
-        print(f"Restored torch RNG state from {rng_path}")
-    except Exception:
-        pass
-
-    if torch.cuda.is_available() and rng.get("cuda", None) is not None:
-        try:
-            torch.cuda.set_rng_state_all(rng["cuda"])
-            print(f"Restored cuda RNG state from {rng_path}")
-        except Exception:
-            pass
+def set_rng_state(state):
+    torch.set_rng_state(state["torch"])
+    np.random.set_state(state["numpy"])
+    random.setstate(state["python"])
+    if torch.cuda.is_available() and "cuda" in state:
+        torch.cuda.set_rng_state(state["cuda"])
 
 
 def get_lr(it, max_lr, min_lr, warmup_steps, max_steps):

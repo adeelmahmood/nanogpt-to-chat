@@ -18,6 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 from utils import (
+    env_info,
     load_checkpoint,
     print0,
     save_checkpoint,
@@ -58,30 +59,19 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # distributed data parallel setup
-    ddp = int(os.environ.get("RANK", -1)) != -1
-    if ddp:
-        init_process_group(backend="nccl")
-        ddp_rank = int(os.environ["RANK"])
-        ddp_local_rank = int(os.environ["LOCAL_RANK"])
-        ddp_world_size = int(os.environ["WORLD_SIZE"])
-        device = f"cuda:{ddp_local_rank}"
-        torch.cuda.set_device(device)
-        master_process = ddp_rank == 0
-    else:
-        ddp_rank = 0
-        ddp_local_rank = 0
-        ddp_world_size = 1
-        master_process = True
-        # attempt to autodetect device
-        device = "cpu"
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            device = "mps"
+    # env setup
+    (
+        ddp,
+        ddp_rank,
+        ddp_local_rank,
+        ddp_world_size,
+        device,
+        master_process,
+        using_cuda,
+    ) = env_info()
 
     send_to_wandb = int(os.environ.get("SEND_TO_WANDB", -1)) != -1
-    device_type = "cuda" if torch.cuda.is_available() else "cpu"
+    device_type = "cuda" if using_cuda else "cpu"
     print0(f"using device: {device} type {device_type}")
 
     if device_type == "cuda":
@@ -101,7 +91,8 @@ def main():
 
     # set seeds
     torch.manual_seed(1337 + ddp_rank)
-    torch.cuda.manual_seed(1337 + ddp_rank)
+    if using_cuda:
+        torch.cuda.manual_seed(1337 + ddp_rank)
 
     # define the tokenizer
     tokenizer = tiktoken.get_encoding("gpt2")
@@ -140,9 +131,6 @@ def main():
     if args.compile_model or device_type == "cuda":
         print0("Compiling model")
         model = torch.compile(model, dynamic=False)
-
-    # Store model ref for sampling
-    raw_model = model
 
     # wrap the model in ddp
     if ddp:

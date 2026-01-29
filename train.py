@@ -19,10 +19,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 from utils import (
+    env_info,
     get_lr_multiplier,
     load_checkpoint,
     print0,
-    restore_rng,
     save_checkpoint,
 )
 
@@ -62,39 +62,16 @@ def main():
 
     args = parse_args()
 
-    # distributed data parallel setup
-    ddp = int(os.environ.get("RANK", -1)) != -1
-    using_cuda = torch.cuda.is_available()
-
-    if ddp:
-        # backend from env variable (override for testing)
-        backend = os.environ.get("DDP_BACKEND", "nccl" if using_cuda else "gloo")
-        init_process_group(backend=backend)
-
-        ddp_rank = int(os.environ["RANK"])
-        ddp_local_rank = int(os.environ["LOCAL_RANK"])
-        ddp_world_size = int(os.environ["WORLD_SIZE"])
-
-        if using_cuda:
-            device = torch.device(f"cuda:{ddp_local_rank}")
-            torch.cuda.set_device(device)
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
-
-        master_process = ddp_rank == 0
-    else:
-        ddp_rank = 0
-        ddp_local_rank = 0
-        ddp_world_size = 1
-        master_process = True
-        # attempt to autodetect device
-        device = "cpu"
-        if using_cuda:
-            device = "cuda"
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            device = "mps"
+    # env setup
+    (
+        ddp,
+        ddp_rank,
+        ddp_local_rank,
+        ddp_world_size,
+        device,
+        master_process,
+        using_cuda,
+    ) = env_info()
 
     send_to_wandb = int(os.environ.get("SEND_TO_WANDB", -1)) != -1
     device_type = "cuda" if using_cuda else "cpu"
@@ -191,10 +168,8 @@ def main():
             optimizer=optimizer,
             device=device,
             strict=True,
+            rank=ddp_rank,
         )
-
-        # Restore RNG & loader states on every rank
-        restore_rng(ckpt)
 
         if ckpt.get("train_loader_state", None) is not None:
             train_loader.load_state_dict(ckpt["train_loader_state"])
@@ -276,9 +251,8 @@ def main():
             model.train()
 
         # save checkpoint
-        if master_process and (
-            last_step
-            or (save_every != -1 and step > start_step and step % save_every == 0)
+        if last_step or (
+            save_every != -1 and step > start_step and step % save_every == 0
         ):
             ckp_prefix = f"pretrain_{args.dataset}_{args.model_depth}"
             ckpt_name = (
@@ -293,6 +267,7 @@ def main():
                 config=config,
                 train_loader=train_loader,
                 val_loader=val_loader,
+                rank=ddp_rank,
             )
 
         if last_step:

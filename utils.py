@@ -4,6 +4,7 @@ from chat import decode_with_special_tokens
 from engine import Engine, Sampler
 import torch
 import math
+from torch.distributed import init_process_group
 
 
 def save_checkpoint(
@@ -14,31 +15,40 @@ def save_checkpoint(
     config=None,
     train_loader=None,
     val_loader=None,
+    rank=0,
 ):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if rank == 0:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # save the model state
+        ckpt = {
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "step": int(step),
+            "config": config,
+            # Data loader state
+            "train_loader_state": (
+                train_loader.state_dict() if train_loader is not None else None
+            ),
+            "val_loader_state": (
+                val_loader.state_dict() if val_loader is not None else None
+            ),
+        }
+        torch.save(ckpt, path + ".tmp")
+        os.replace(path + ".tmp", path)
+        print0(f"Checkpoint (model) saved at {path}")
 
-    ckpt = {
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "step": int(step),
-        "config": config,
-        # RNG
+    # per rank rng state
+    rng_ckpt = {
         "rng_state": {
             "torch": torch.get_rng_state(),
             "cuda": (
                 torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
             ),
         },
-        # Data loader state
-        "train_loader_state": (
-            train_loader.state_dict() if train_loader is not None else None
-        ),
-        "val_loader_state": val_loader.state_dict() if val_loader is not None else None,
     }
-
-    torch.save(ckpt, path + ".tmp")
-    os.replace(path + ".tmp", path)
-    print0(f"Checkpoint saved at {path}")
+    rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
+    torch.save(rng_ckpt, rng_path)
+    print0(f"Checkpoint (rng) saved at {rng_path}")
 
 
 def load_checkpoint(
@@ -47,6 +57,7 @@ def load_checkpoint(
     optimizer: torch.optim.Optimizer | None,
     device: str,
     strict: bool = True,
+    rank: int = 0,
 ):
     ckpt = torch.load(path, map_location=device, weights_only=False)
 
@@ -70,11 +81,19 @@ def load_checkpoint(
                     state[k] = v.to(device)
 
     step = int(ckpt.get("step", -1))
+
+    # load per rank rng
+    restore_rng(path=path, device=device, rank=rank)
+
+    # return the checkpoint and step
     return ckpt, step
 
 
-def restore_rng(ckpt: dict):
+def restore_rng(path: str, device: str, rank: int):
+    rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
+    ckpt = torch.load(rng_path, map_location=device, weights_only=False)
     rng = ckpt.get("rng_state", None)
+
     if rng is None:
         return
 
@@ -150,3 +169,49 @@ def extract_final_number(answer: str) -> str:
     if not match:
         return None
     return match.group(1).replace(",", "").strip()
+
+
+def env_info():
+    # distributed data parallel setup
+    ddp = int(os.environ.get("RANK", -1)) != -1
+    using_cuda = torch.cuda.is_available()
+
+    if ddp:
+        # backend from env variable (override for testing)
+        backend = os.environ.get("DDP_BACKEND", "nccl" if using_cuda else "gloo")
+        init_process_group(backend=backend)
+
+        ddp_rank = int(os.environ["RANK"])
+        ddp_local_rank = int(os.environ["LOCAL_RANK"])
+        ddp_world_size = int(os.environ["WORLD_SIZE"])
+
+        if using_cuda:
+            device = torch.device(f"cuda:{ddp_local_rank}")
+            torch.cuda.set_device(device)
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+
+        master_process = ddp_rank == 0
+    else:
+        ddp_rank = 0
+        ddp_local_rank = 0
+        ddp_world_size = 1
+        master_process = True
+        # attempt to autodetect device
+        device = "cpu"
+        if using_cuda:
+            device = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = "mps"
+
+    return (
+        ddp,
+        ddp_rank,
+        ddp_local_rank,
+        ddp_world_size,
+        device,
+        master_process,
+        using_cuda,
+    )

@@ -43,6 +43,7 @@ export WANDB_CACHE_DIR=$MOUNT_POINT/wandb/cache
 export WANDB_CONFIG_DIR=$MOUNT_POINT/wandb/config
 
 export NETRC=$MOUNT_POINT/.netrc
+export SEND_TO_WANDB=1
 EOF
 
 # activate python env in current shell
@@ -57,6 +58,15 @@ rm -f ~/.netrc
 echo "== Cleanup root caches =="
 rm -rf ~/.cache/{huggingface,wandb,pip} ~/.local/share/wandb || true
 
+echo "== Validation =="
+python - <<EOF
+import sys, os
+print("Python:", sys.version)
+print("HF_HOME:", os.environ.get("HF_HOME"))
+print("WANDB_DIR:", os.environ.get("WANDB_DIR"))
+print("NETRC:", os.environ.get("NETRC"))
+EOF
+
 cd /mnt/instancestore
 cd $MOUNT_POINT
 if [ ! -d nanogpt-to-chat ]; then
@@ -68,27 +78,16 @@ cd $MOUNT_POINT/nanogpt-to-chat
 pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "== Validation =="
-python - <<EOF
-import sys, torch, os
-print("Python:", sys.version)
-print("Torch:", torch.__version__)
-print("CUDA:", torch.cuda.is_available())
-print("GPUs:", torch.cuda.device_count())
-print("HF_HOME:", os.environ.get("HF_HOME"))
-print("WANDB_DIR:", os.environ.get("WANDB_DIR"))
-print("NETRC:", os.environ.get("NETRC"))
-EOF
-
-
 cat > ~/enter_ml.sh <<EOF
 #!/usr/bin/env bash
 source ~/.config/ml_env.sh
 source $VENV_DIR/bin/activate
 cd $MOUNT_POINT/nanogpt-to-chat
+wandb login
 EOF
 
 chmod +x ~/enter_ml.sh
 
 echo "== Setup complete =="
+echo "Make sure to setup AWS credentials and WandB login."
 echo "Next: source ~/enter_ml.sh"

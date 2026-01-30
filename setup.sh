@@ -63,6 +63,11 @@ if [ ! -d nanogpt-to-chat ]; then
   git clone https://github.com/adeelmahmood/nanogpt-to-chat.git
 fi
 
+# == Install repo requirements ==
+cd $MOUNT_POINT/nanogpt-to-chat
+pip install --upgrade pip
+pip install -r requirements.txt
+
 echo "== Validation =="
 python - <<EOF
 import sys, torch, os
@@ -74,11 +79,6 @@ print("HF_HOME:", os.environ.get("HF_HOME"))
 print("WANDB_DIR:", os.environ.get("WANDB_DIR"))
 print("NETRC:", os.environ.get("NETRC"))
 EOF
-
-# == Install repo requirements ==
-cd $MOUNT_POINT/nanogpt-to-chat
-pip install --upgrade pip
-pip install -r requirements.txt
 
 
 cat > ~/enter_ml.sh <<EOF

@@ -38,14 +38,13 @@ def save_checkpoint(
         }
         torch.save(ckpt, path + ".tmp")
         os.replace(path + ".tmp", path)
-        print0(f"Checkpoint (model) saved at {path}")
+        print0(f"Checkpoint saved at {path}")
 
     try:
         # per rank rng state
         rng_state = get_rng_state()
         rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
         torch.save(rng_state, rng_path)
-        print(f"RNG state saved at {rng_path}")
     except Exception as e:
         pass
 
@@ -86,7 +85,6 @@ def load_checkpoint(
         rng_path = path.replace(".pt", f".rank{rank}.rng.pt")
         rng_state = torch.load(rng_path, map_location=device, weights_only=False)
         set_rng_state(rng_state)
-        print(f"RNG state restored from {rng_path}")
     except Exception as e:
         pass
 

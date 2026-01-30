@@ -92,7 +92,8 @@ def main():
     if send_to_wandb and master_process:
         # grab RUN_ID env variable
         run_id = os.environ.get("RUN_ID", "")
-        resume = "must" if run_id != "" else ""
+        resume = "allow" if run_id != "" else None
+        print(f"WandB run id: {run_id}, resume: {resume}")
         wandb_run = wandb.init(
             project="nano-chat", name="pretrain" + str(run_id), resume=resume
         )

@@ -22,12 +22,13 @@ mkdir -p \
   $MOUNT_POINT/wandb/{cache,config,run}
 
 echo "== Create Python 3.11 venv =="
-rm -rf $VENV_DIR
+rm -rf "$VENV_DIR"
 python3.11 -m venv $VENV_DIR
 source $VENV_DIR/bin/activate
 
 echo "== Environment variables =="
-sudo tee /etc/profile.d/ml.sh > /dev/null <<EOF
+mkdir -p ~/.config
+cat > ~/.config/ml_env.sh <<EOF
 export PIP_CACHE_DIR=$MOUNT_POINT/pip_cache
 
 export HF_HOME=$MOUNT_POINT/hf_cache
@@ -45,7 +46,7 @@ export NETRC=$MOUNT_POINT/.netrc
 EOF
 
 # activate python env in current shell
-source /etc/profile.d/ml.sh
+source ~/.config/ml_env.sh
 source $VENV_DIR/bin/activate
 
 echo "== netrc setup =="
@@ -57,7 +58,10 @@ echo "== Cleanup root caches =="
 rm -rf ~/.cache/{huggingface,wandb,pip} ~/.local/share/wandb || true
 
 cd /mnt/instancestore
-git clone https://github.com/adeelmahmood/nanogpt-to-chat.git
+cd $MOUNT_POINT
+if [ ! -d nanogpt-to-chat ]; then
+  git clone https://github.com/adeelmahmood/nanogpt-to-chat.git
+fi
 
 echo "== Validation =="
 python - <<EOF
@@ -75,3 +79,16 @@ EOF
 cd $MOUNT_POINT/nanogpt-to-chat
 pip install --upgrade pip
 pip install -r requirements.txt
+
+
+cat > ~/enter_ml.sh <<EOF
+#!/usr/bin/env bash
+source ~/.config/ml_env.sh
+source $VENV_DIR/bin/activate
+cd $MOUNT_POINT/nanogpt-to-chat
+EOF
+
+chmod +x ~/enter_ml.sh
+
+echo "== Setup complete =="
+echo "Next: source ~/enter_ml.sh"

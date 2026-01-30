@@ -12,6 +12,8 @@ if [[ ! -f "$PARAM_FILE" ]]; then
 fi
 source "$PARAM_FILE"
 
+export RUN_ID="$RUN_ID"
+
 RUN_DIR="runs/${RUN_ID}"
 mkdir -p "$RUN_DIR"
 

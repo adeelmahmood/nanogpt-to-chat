@@ -27,7 +27,10 @@ else
   read -p "SFT eval every: " SFT_EVAL_EVERY; SFT_EVAL_EVERY=${SFT_EVAL_EVERY:-$((SFT_STEPS/10))}
 fi
 
-RUN_DIR="runs/$(date +%-m%-d)_${DATASET}_${MODEL_DEPTH}"
+RUN_ID="$(date +%-m%-d)_${DATASET}_${MODEL_DEPTH}"
+export RUN_ID="$RUN_ID"
+
+RUN_DIR="runs/${RUN_ID}"
 CKPT_DIR="${RUN_DIR}/checkpoints"
 mkdir -p "$CKPT_DIR"
 

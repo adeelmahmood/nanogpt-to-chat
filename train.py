@@ -90,7 +90,12 @@ def main():
 
     # log
     if send_to_wandb and master_process:
-        wandb_run = wandb.init(project="nano-chat", name="pre-train")
+        # grab RUN_ID env variable
+        run_id = os.environ.get("RUN_ID", "")
+        resume = "must" if run_id != "" else ""
+        wandb_run = wandb.init(
+            project="nano-chat", name="pretrain" + str(run_id), resume=resume
+        )
 
     # set seeds
     base_seed = 1337 + ddp_rank

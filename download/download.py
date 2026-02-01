@@ -17,14 +17,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--ds",
-        type=str,
-        choices=["fw", "ts"],
-        required=True,
-        help="Dataset to download: fw (FineWeb Edu) | ts (Tiny Stories)",
-    )
-
-    parser.add_argument(
         "--dataset_name",
         type=str,
         required=True,

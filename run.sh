@@ -58,7 +58,6 @@ fi
 if [[ -z "$(ls -A "$DATASET_DIR" 2>/dev/null)" ]]; then
   echo "Downloading dataset..."
   python download/download.py \
-    --ds "$DATASET" \
     --dataset_name "$DATASET_NAME" \
     --remote_name "$REMOTE_NAME" \
     --local_dir "$DATASET_DIR/"

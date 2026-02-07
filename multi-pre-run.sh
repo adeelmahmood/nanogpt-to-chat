@@ -156,6 +156,19 @@ if [[ ! -f "$PRETRAIN_CKPT" ]]; then
 fi
 
 ############################################
+# FINAL SYNC
+############################################
+
+if [[ -n "${BUCKET:-}" ]]; then
+  echo
+  echo "Final checkpoint sync..."
+  aws s3 sync "${RUN_DIR}/checkpoints/" \
+    "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
+    --exclude "*.tmp" \
+    --only-show-errors || true
+fi
+
+############################################
 # EVAL
 ############################################
 
@@ -171,18 +184,6 @@ echo
 echo "Running sampling..."
 python sample.py --model_file "$PRETRAIN_CKPT" --model_depth "$MODEL_DEPTH"
 
-############################################
-# FINAL SYNC
-############################################
-
-if [[ -n "${BUCKET:-}" ]]; then
-  echo
-  echo "Final checkpoint sync..."
-  aws s3 sync "${RUN_DIR}/checkpoints/" \
-    "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
-    --exclude "*.tmp" \
-    --only-show-errors || true
-fi
 
 echo
 echo "✅ Run complete"

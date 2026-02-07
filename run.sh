@@ -4,7 +4,7 @@ set -e
 # Single-run pre -> mid -> sft pipeline (interactive prompts, robust syncs)
 
 # check if params file exists then source tat
-PARAM_FILE="run_params.env"
+PARAM_FILE="${1:-run_params.env}"
 if [[ -f "$PARAM_FILE" ]]; then
   echo "Loading parameters from $PARAM_FILE"
   source "$PARAM_FILE"

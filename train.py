@@ -28,6 +28,15 @@ from utils import (
 )
 
 
+def str2bool(v):
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -56,20 +65,25 @@ def parse_args():
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
+    # logging
+    parser.add_argument("--log_dir", type=str, default="./logs")
+    parser.add_argument("--log_file", type=str, default="train.jsonl")
+
     # architecture params
-    parser.add_argument("--use_rope", type=bool, default=True)
-    parser.add_argument("--use_rmsnorm", type=bool, default=True)
-    parser.add_argument("--use_qk_norm", type=bool, default=True)
-    parser.add_argument("--use_gqa", type=bool, default=True)
-    parser.add_argument("--use_kv_cache", type=bool, default=True)
+    parser.add_argument("--use_rope", type=str2bool, default=True)
+    parser.add_argument("--use_rmsnorm", type=str2bool, default=True)
+    parser.add_argument("--use_qk_norm", type=str2bool, default=True)
+    parser.add_argument("--use_gqa", type=str2bool, default=True)
+    parser.add_argument("--use_kv_cache", type=str2bool, default=True)
 
     return parser.parse_args()
 
 
 def main():
 
-    logger = MetricLogger("runs", file_name="logs/train_log.jsonl")
     args = parse_args()
+
+    logger = MetricLogger(args.log_dir, file_name=args.log_file)
 
     # env setup
     (

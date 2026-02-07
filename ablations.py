@@ -1,8 +1,10 @@
 import json
 import os
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
+import fnmatch
 
 
 def ema(xs, alpha=0.1):
@@ -22,100 +24,165 @@ def load_run(path):
     return data
 
 
-runs = {}
-for filename in os.listdir("runs"):
-    if filename.endswith(".jsonl"):
-        runs[filename[:-6]] = load_run(f"runs/{filename}")
+def parse_args():
+    parser = argparse.ArgumentParser(description='Generate ablation study plots')
+    parser.add_argument('--filter-pattern', type=str, help='Pattern to filter run names (e.g., "*positioning*")')
+    parser.add_argument('--output-dir', type=str, default='.', help='Output directory for plots')
+    parser.add_argument('--title', type=str, default='Ablation Study', help='Plot title')
+    parser.add_argument('--runs-dir', type=str, default='runs', help='Directory containing run logs')
+    return parser.parse_args()
 
-fig, axes = plt.subplots(2, 3, figsize=(20, 10))
-(
-    ax_loss_steps,
-    ax_loss_tokens,
-    ax_throughput,
-    ax_instability,
-    ax_max_instability,
-    ax_empty,
-) = axes.flatten()
+def load_runs(runs_dir="runs", filter_pattern=None):
+    runs = {}
+    
+    # Look for both old format (runs/*.jsonl) and new format (runs/*/train.jsonl)
+    if os.path.exists(runs_dir):
+        for item in os.listdir(runs_dir):
+            item_path = os.path.join(runs_dir, item)
+            
+            if item.endswith(".jsonl"):
+                # Old format: runs/run_name.jsonl
+                run_name = item[:-6]
+                log_file = item_path
+            elif os.path.isdir(item_path):
+                # New format: runs/run_name/train.jsonl (or train.jsonl.jsonl if double extension bug)
+                run_name = item
+                log_file = os.path.join(item_path, "train.jsonl")
+                if not os.path.exists(log_file):
+                    # Check for double extension bug
+                    log_file = os.path.join(item_path, "train.jsonl.jsonl")
+                    if not os.path.exists(log_file):
+                        continue
+            else:
+                continue
+            
+            # Apply filter if specified
+            if filter_pattern and not fnmatch.fnmatch(run_name, filter_pattern):
+                continue
+                
+            runs[run_name] = load_run(log_file)
+    
+    return runs
 
-# ---------- Loss vs steps ----------
-for name, run in runs.items():
-    ax_loss_steps.plot(run["step"], ema(run["train_loss"]), label=name)
+def generate_plots(runs, title="Ablation Study", output_dir="."):
+    if not runs:
+        print("No runs found matching the filter pattern!")
+        return
+        
+    fig, axes = plt.subplots(2, 3, figsize=(20, 10))
+    (
+        ax_loss_steps,
+        ax_loss_tokens,
+        ax_throughput,
+        ax_instability,
+        ax_max_instability,
+        ax_empty,
+    ) = axes.flatten()
 
-ax_loss_steps.set_title("Loss vs Steps")
-ax_loss_steps.set_xlabel("Steps")
-ax_loss_steps.set_ylabel("Train Loss (EMA)")
-ax_loss_steps.legend(fontsize=8)
+    # ---------- Loss vs steps ----------
+    for name, run in runs.items():
+        ax_loss_steps.plot(run["step"], ema(run["train_loss"]), label=name)
 
-# ---------- Loss vs tokens ----------
-for name, run in runs.items():
-    tokens = run["total_tokens"]
+    ax_loss_steps.set_title(f"{title} - Loss vs Steps")
+    ax_loss_steps.set_xlabel("Steps")
+    ax_loss_steps.set_ylabel("Train Loss (EMA)")
+    ax_loss_steps.legend(fontsize=8)
 
-    ax_loss_tokens.plot(tokens, ema(run["train_loss"]), label=name)
+    # ---------- Loss vs tokens ----------
+    for name, run in runs.items():
+        tokens = run["total_tokens"]
+        ax_loss_tokens.plot(tokens, ema(run["train_loss"]), label=name)
 
-ax_loss_tokens.set_title("Loss vs Tokens Seen")
-ax_loss_tokens.set_xlabel("Tokens")
-ax_loss_tokens.set_ylabel("Train Loss (EMA)")
+    ax_loss_tokens.set_title(f"{title} - Loss vs Tokens Seen")
+    ax_loss_tokens.set_xlabel("Tokens")
+    ax_loss_tokens.set_ylabel("Train Loss (EMA)")
 
-# ---------- Throughput ----------
-for name, run in runs.items():
-    ax_throughput.plot(run["step"], ema(run["tok_per_sec"]), label=name)
+    # ---------- Throughput ----------
+    for name, run in runs.items():
+        ax_throughput.plot(run["step"], ema(run["tok_per_sec"]), label=name)
 
-ax_throughput.set_title("Throughput")
-ax_throughput.set_xlabel("Steps")
-ax_throughput.set_ylabel("Tokens / Sec (EMA)")
+    ax_throughput.set_title(f"{title} - Throughput")
+    ax_throughput.set_xlabel("Steps")
+    ax_throughput.set_ylabel("Tokens / Sec (EMA)")
 
-# ---------- Instability: |Δloss| ----------
-for name, run in runs.items():
-    loss = np.array(run["train_loss"])
-    delta = np.abs(np.diff(loss))
-    ax_instability.plot(run["step"][1:], ema(delta), label=name)
+    # ---------- Instability: |Δloss| ----------
+    for name, run in runs.items():
+        loss = np.array(run["train_loss"])
+        delta = np.abs(np.diff(loss))
+        ax_instability.plot(run["step"][1:], ema(delta), label=name)
 
-ax_instability.set_title("Instability: |Δ Loss|")
-ax_instability.set_xlabel("Steps")
-ax_instability.set_ylabel("|Δ Loss| (EMA)")
+    ax_instability.set_title(f"{title} - Instability: |Δ Loss|")
+    ax_instability.set_xlabel("Steps")
+    ax_instability.set_ylabel("|Δ Loss| (EMA)")
 
-# ---------- Max instability summary ----------
-names = []
-max_deltas = []
-for name, run in runs.items():
-    loss = np.array(run["train_loss"])
-    max_deltas.append(np.max(np.abs(np.diff(loss))))
-    names.append(name)
+    # ---------- Max instability summary ----------
+    names = []
+    max_deltas = []
+    for name, run in runs.items():
+        loss = np.array(run["train_loss"])
+        max_deltas.append(np.max(np.abs(np.diff(loss))))
+        names.append(name)
 
-ax_max_instability.bar(names, max_deltas)
-ax_max_instability.set_title("Worst-Case Instability")
-ax_max_instability.set_ylabel("Max |Δ Loss|")
-ax_max_instability.tick_params(axis="x", rotation=45)
+    ax_max_instability.bar(names, max_deltas)
+    ax_max_instability.set_title(f"{title} - Worst-Case Instability")
+    ax_max_instability.set_ylabel("Max |Δ Loss|")
+    ax_max_instability.tick_params(axis="x", rotation=45)
 
-# ---------- Empty / future ----------
-ax_empty.axis("off")
+    # ---------- Empty / future ----------
+    ax_empty.axis("off")
 
-description = (
-    "What these plots show:\n\n"
-    "Loss vs Steps:\n"
-    "  How training progresses over optimizer steps.\n"
-    "  Useful for debugging schedules.\n\n"
-    "Loss vs Tokens:\n"
-    "  Main comparison plot.\n"
-    "  Lower loss at the same tokens = better model.\n\n"
-    "Throughput:\n"
-    "  How fast each model trains.\n\n"
-    "|Δ Loss| (Instability):\n"
-    "  Measures how jumpy training is.\n"
-    "  Big spikes mean instability.\n\n"
-    "Max |Δ Loss|:\n"
-    "  Single worst jump during training."
-)
+    description = (
+        "What these plots show:\n\n"
+        "Loss vs Steps:\n"
+        "  How training progresses over optimizer steps.\n"
+        "  Useful for debugging schedules.\n\n"
+        "Loss vs Tokens:\n"
+        "  Main comparison plot.\n"
+        "  Lower loss at the same tokens = better model.\n\n"
+        "Throughput:\n"
+        "  How fast each model trains.\n\n"
+        "|Δ Loss| (Instability):\n"
+        "  Measures how jumpy training is.\n"
+        "  Big spikes mean instability.\n\n"
+        "Max |Δ Loss|:\n"
+        "  Single worst jump during training.\n\n"
+        f"Comparing: {list(runs.keys())}"
+    )
 
-ax_empty.text(
-    0.0,
-    1.0,
-    description,
-    va="top",
-    ha="left",
-    fontsize=11,
-)
+    ax_empty.text(
+        0.0,
+        1.0,
+        description,
+        va="top",
+        ha="left",
+        fontsize=10,
+    )
 
+    plt.tight_layout()
+    
+    # Save plot
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "ablation_plots.png")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"Plots saved to: {output_path}")
+    
+    plt.show()
 
-plt.tight_layout()
-plt.show()
+def main():
+    args = parse_args()
+    
+    print(f"Loading runs from: {args.runs_dir}")
+    if args.filter_pattern:
+        print(f"Filtering with pattern: {args.filter_pattern}")
+    
+    runs = load_runs(args.runs_dir, args.filter_pattern)
+    
+    print(f"Found {len(runs)} runs: {list(runs.keys())}")
+    
+    if runs:
+        generate_plots(runs, args.title, args.output_dir)
+    else:
+        print("No runs found!")
+
+if __name__ == "__main__":
+    main()

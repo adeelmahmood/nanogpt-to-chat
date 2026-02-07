@@ -5,7 +5,7 @@ set -e
 # LOAD RUN PARAMS
 ############################################
 
-PARAM_FILE="params/run_params_multi.env"
+PARAM_FILE="${1:-params/run_params_multi.env}"
 if [[ ! -f "$PARAM_FILE" ]]; then
   echo "Missing $PARAM_FILE (required)."
   exit 1

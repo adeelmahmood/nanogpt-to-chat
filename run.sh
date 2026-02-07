@@ -4,30 +4,16 @@ set -e
 # Single-run pre -> mid -> sft pipeline (interactive prompts, robust syncs)
 
 # check if params file exists then source tat
-PARAM_FILE="${1:-run_params.env}"
+PARAM_FILE="${1:-params/run_params.env}"
 if [[ -f "$PARAM_FILE" ]]; then
   echo "Loading parameters from $PARAM_FILE"
   source "$PARAM_FILE"
 else
-  # ---------- params (interactive with sensible defaults) ----------
-  read -p "Dataset (fw / ts) [fw]: " DATASET; DATASET=${DATASET:-fw}
-  read -p "Model depth (d12 / d20) [d12]: " MODEL_DEPTH; MODEL_DEPTH=${MODEL_DEPTH:-d12}
-  read -p "Batch size (4/8/16/32) [16]: " BATCH_SIZE; BATCH_SIZE=${BATCH_SIZE:-16}
-  read -p "Total batch size [524288]: " TOTAL_BATCH_SIZE; TOTAL_BATCH_SIZE=${TOTAL_BATCH_SIZE:-524288}
-  read -p "Pretrain max steps (Enter = default) [1000]: " TRAIN_STEPS; TRAIN_STEPS=${TRAIN_STEPS:-1000}
-  read -p "Eval every: " EVAL_EVERY; EVAL_EVERY=${EVAL_EVERY:-$((TRAIN_STEPS/10))}
-  read -p "Save every: " SAVE_EVERY; SAVE_EVERY=${SAVE_EVERY:-$((TRAIN_STEPS*0.25))}
-  read -p "Checkpoint dir [./ckps]: " CKPT_DIR; CKPT_DIR=${CKPT_DIR:-./ckps}
-  read -p "S3 bucket for sync (leave empty to skip S3): " BUCKET
-
-  read -p "Midtrain max steps [1000]: " MID_STEPS; MID_STEPS=${MID_STEPS:-1000}
-  read -p "Mid eval every: " MID_EVAL_EVERY; MID_EVAL_EVERY=${MID_EVAL_EVERY:-$((MID_STEPS/10))}
-
-  read -p "SFT max steps [1000]: " SFT_STEPS; SFT_STEPS=${SFT_STEPS:-1000}
-  read -p "SFT eval every: " SFT_EVAL_EVERY; SFT_EVAL_EVERY=${SFT_EVAL_EVERY:-$((SFT_STEPS/10))}
+  echo "No parameter file found at $PARAM_FILE. Exiting."
+  exit 1
 fi
 
-RUN_ID="$(date +%-m%-d)_${DATASET}_${MODEL_DEPTH}"
+RUN_ID="$(date +%-m-%-d)_${DATASET}_${MODEL_DEPTH}"
 export RUN_ID="$RUN_ID"
 
 RUN_DIR="runs/${RUN_ID}"
@@ -161,6 +147,7 @@ SFTTRAIN_CMD=("${PYTHON_CMD[@]}" sft_train.py \
   --max_steps "$SFT_STEPS" \
   --eval_every "$SFT_EVAL_EVERY" \
   --save_every "$SAVE_EVERY" \
+  --target_examples_per_step "$SFT_EXAMPLES_PER_STEP" \
   --ckpt_out "$CKPT_DIR")
 echo "Command: ${SFTTRAIN_CMD[*]}"
 "${SFTTRAIN_CMD[@]}"

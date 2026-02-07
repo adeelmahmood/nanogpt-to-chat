@@ -18,6 +18,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
+from logger import MetricLogger
 from utils import (
     env_info,
     get_lr_multiplier,
@@ -55,11 +56,19 @@ def parse_args():
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
+    # architecture params
+    parser.add_argument("--use_rope", type=bool, default=True)
+    parser.add_argument("--use_rmsnorm", type=bool, default=True)
+    parser.add_argument("--use_qk_norm", type=bool, default=True)
+    parser.add_argument("--use_gqa", type=bool, default=True)
+    parser.add_argument("--use_kv_cache", type=bool, default=True)
+
     return parser.parse_args()
 
 
 def main():
 
+    logger = MetricLogger("runs", file_name="logs/train_log.jsonl")
     args = parse_args()
 
     # env setup
@@ -105,7 +114,12 @@ def main():
         torch.cuda.manual_seed(base_seed)
 
     # initialize the model
-    config = get_gpt_config(args.model_depth)
+    config = get_gpt_config(args.model_depth, args=args)
+    if master_process:
+        print("\n======== MODEL CONFIG ========")
+        for k in sorted(vars(config).keys()):
+            print(f"{k}: {getattr(config, k)}")
+        print("============================\n")
 
     # Hyper parameters
     max_steps = args.max_steps  # 19073 # 10B / 524288
@@ -323,7 +337,7 @@ def main():
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
 
-        # logging
+        # gather stats
         synchronize()
         et = time.time()
         step_tokens = (
@@ -336,9 +350,21 @@ def main():
         remaining_steps = max_steps - step - 1
         eta_seconds = remaining_steps * avg_time_per_step
         matrix_lr = lr_logs["lr/matrix"]
-        print0(
-            f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}"
-        )
+
+        # logging
+        if master_process:
+            print0(
+                f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}"
+            )
+            logger.log(
+                step=step,
+                train_loss=loss_accum.item(),
+                lr_matrix=matrix_lr,
+                tok_per_sec=tok_sec,
+                total_time=total_time,
+                eta_seconds=eta_seconds,
+                total_tokens=total_tokens,
+            )
 
         if master_process and send_to_wandb:
             wandb_run.log(

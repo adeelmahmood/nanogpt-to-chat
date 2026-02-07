@@ -58,17 +58,25 @@ class GPTConfigD20:  # larger d20 model
     use_kv_cache: bool = True
 
 
-def get_gpt_config(depth):
+def get_gpt_config(depth, args=None):
     if depth == "d2":
-        return GPTConfigD2()
+        config = GPTConfigD2()
     elif depth == "d12":
-        return GPTConfig()
+        config = GPTConfig()
     elif depth == "d20":
-        return GPTConfigD20()
+        config = GPTConfigD20()
     else:
         raise ValueError(
-            f"No configuration available for depth {depth}. Available depths: d2, d12, d20"
+            f"No configuration available for depth {depth}. "
+            "Available depths: d2, d12, d20"
         )
+
+    if args is not None:
+        for k, v in vars(args).items():
+            if hasattr(config, k):
+                setattr(config, k, v)
+
+    return config
 
 
 def rope_cache(seq_len, head_dim, base: int = 10000):

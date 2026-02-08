@@ -28,12 +28,12 @@ get_variants() {
             echo "mqa:attn_type=mqa"
             ;;
         "gqa_kv_heads_small")
-            echo "gqa:attn_type=gqa,n_kv_head=2"
-            echo "gqa:attn_type=gqa,n_kv_head=3"
+            echo "gqa_2:attn_type=gqa,n_kv_head=2"
+            echo "gqa_3:attn_type=gqa,n_kv_head=3"
             ;;
         "gqa_kv_heads_big")
-            echo "gqa:attn_type=gqa,n_kv_head=2"
-            echo "gqa:attn_type=gqa,n_kv_head=5"
+            echo "gqa_2:attn_type=gqa,n_kv_head=2"
+            echo "gqa_5:attn_type=gqa,n_kv_head=5"
             ;;
         "normalization")
             echo "rms:use_rmsnorm=true"

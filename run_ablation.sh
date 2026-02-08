@@ -82,7 +82,7 @@ else  # d12
     MAX_STEPS=2000
 fi
 
-TOTAL_BATCH_SIZE=$((BATCH_SIZE * NPROC_PER_NODE))
+TOTAL_BATCH_SIZE=$((DEVICE_BATCH_SIZE * NPROC_PER_NODE))
 echo "Using ${MODEL_DEPTH} training regime: batch_size=$BATCH_SIZE, total_batch_size=$TOTAL_BATCH_SIZE, max_steps=$MAX_STEPS"
 
 echo "Running ${#VARIANT_SPECS[@]} variants:"

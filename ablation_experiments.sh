@@ -24,7 +24,7 @@ get_variants() {
             ;;
         "attention")
             echo "mha:attn_type=mha" 
-            echo "gqa:attn_type=gqa"
+            echo "gqa:attn_type=gqa,num_kv_heads=2"
             echo "mqa:attn_type=mqa"
             ;;
         "gqa_kv_heads_small")
@@ -49,9 +49,9 @@ get_variants() {
             echo "softcap_30:logit_softcap=30.0"
             ;;
         "model_size")
-            echo "small:n_layer=6,n_emb=384"
-            echo "medium:n_layer=12,n_emb=768"
-            echo "large:n_layer=20,n_emb=1280"
+            echo "d6:block_size=512,n_layer=6,n_head=3,n_kv_head=3,n_emb=384"
+            echo "d12:block_size=1024,n_layer=12,n_head=6,n_kv_head=6,n_emb=768"
+            echo "d20:block_size=2048,n_layer=20,n_head=10,n_kv_head=10,n_emb=1280"
             ;;
         "stress")
             echo "all_good:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
@@ -77,6 +77,6 @@ list_experiments() {
     echo "  normalization - RMSNorm vs LayerNorm"
     echo "  qk_norm       - With vs Without QK normalization"
     echo "  logits_cap    - Different logit softcap values"
-    echo "  model_size    - Small vs Medium vs Large model dimensions"
+    echo "  model_size    - d6 vs d12 vs d20 model dimensions"
     echo "  stress        - All good vs All bad configurations"
 }

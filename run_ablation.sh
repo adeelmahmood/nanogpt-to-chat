@@ -74,13 +74,13 @@ fi
 # Set training parameters based on model size
 if [[ "$MODEL_DEPTH" == "d20" ]]; then
     BATCH_SIZE=8
-    TOTAL_BATCH_SIZE=16384  
-    MAX_STEPS=1250
+    TOTAL_BATCH_SIZE=16384
+    MAX_STEPS=1000
     echo "Using d20 training regime: batch_size=$BATCH_SIZE, total_batch_size=$TOTAL_BATCH_SIZE, max_steps=$MAX_STEPS"
 else  # d12
     BATCH_SIZE=8
     TOTAL_BATCH_SIZE=32768
-    MAX_STEPS=2500
+    MAX_STEPS=2000
     echo "Using d12 training regime: batch_size=$BATCH_SIZE, total_batch_size=$TOTAL_BATCH_SIZE, max_steps=$MAX_STEPS"
 fi
 

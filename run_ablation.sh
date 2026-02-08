@@ -74,15 +74,16 @@ fi
 # Set training parameters based on model size
 if [[ "$MODEL_DEPTH" == "d20" ]]; then
     BATCH_SIZE=8
-    TOTAL_BATCH_SIZE=16384
+    DEVICE_BATCH_SIZE=16384
     MAX_STEPS=1000
-    echo "Using d20 training regime: batch_size=$BATCH_SIZE, total_batch_size=$TOTAL_BATCH_SIZE, max_steps=$MAX_STEPS"
 else  # d12
     BATCH_SIZE=8
-    TOTAL_BATCH_SIZE=32768
+    DEVICE_BATCH_SIZE=32768
     MAX_STEPS=2000
-    echo "Using d12 training regime: batch_size=$BATCH_SIZE, total_batch_size=$TOTAL_BATCH_SIZE, max_steps=$MAX_STEPS"
 fi
+
+TOTAL_BATCH_SIZE=$((BATCH_SIZE * NPROC_PER_NODE))
+echo "Using ${MODEL_DEPTH} training regime: batch_size=$BATCH_SIZE, total_batch_size=$TOTAL_BATCH_SIZE, max_steps=$MAX_STEPS"
 
 echo "Running ${#VARIANT_SPECS[@]} variants:"
 for variant_spec in "${VARIANT_SPECS[@]}"; do
@@ -102,7 +103,13 @@ add_variant_params() {
             if [[ "$pair" == *"="* ]]; then
                 key="${pair%%=*}"
                 value="${pair#*=}"
-                TRAIN_CMD+=(--"$key" "$value")
+                
+                # Handle max_steps specially - don't add to TRAIN_CMD, just set VARIANT_MAX_STEPS
+                if [[ "$key" == "max_steps" ]]; then
+                    VARIANT_MAX_STEPS="$value"
+                else
+                    TRAIN_CMD+=(--"$key" "$value")
+                fi
             fi
         done
     fi
@@ -127,6 +134,9 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
     VARIANT_RUN_DIR="runs/${VARIANT_RUN_ID}"
     mkdir -p "${VARIANT_RUN_DIR}"
     
+    # Initialize variant-specific max_steps (default to global MAX_STEPS)
+    VARIANT_MAX_STEPS="$MAX_STEPS"
+    
     # Build training command directly
     TRAIN_CMD=(
         "${PYTHON_CMD[@]}" train.py
@@ -135,7 +145,6 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
         --model_depth "$MODEL_DEPTH"
         --batch_size "$BATCH_SIZE"
         --total_batch_size "$TOTAL_BATCH_SIZE"
-        --max_steps "$MAX_STEPS"
         --eval_every -1
         --save_every -1
         --ckpt_out "${VARIANT_RUN_DIR}/checkpoints"
@@ -143,12 +152,16 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
         --log_file "train.jsonl"
     )
     
-    # Add variant-specific parameters
+    # Add variant-specific parameters (this may update VARIANT_MAX_STEPS)
     add_variant_params "$variant_params"
+    
+    # Add the final max_steps to command (after potential override)
+    TRAIN_CMD+=(--max_steps "$VARIANT_MAX_STEPS")
     
     # Display and run the command
     echo "Starting training for ${variant_name}..."
     echo "  Run ID: ${VARIANT_RUN_ID}"
+    echo "  Max steps: ${VARIANT_MAX_STEPS}$([ "$VARIANT_MAX_STEPS" != "$MAX_STEPS" ] && echo " (overridden from $MAX_STEPS)" || echo "")"
     echo "  Logs will be saved to: ${VARIANT_RUN_DIR}/train.jsonl"
     echo "  Command: ${TRAIN_CMD[*]}"
     echo

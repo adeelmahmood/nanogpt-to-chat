@@ -13,6 +13,11 @@ get_variants() {
             echo "abs:pos_emb_type=absolute"
             echo "rope:pos_emb_type=rope"
             ;;
+        "positioning_mqa")
+            echo "none:pos_emb_type=none,attn_type=mqa"
+            echo "abs:pos_emb_type=absolute,attn_type=mqa"
+            echo "rope:pos_emb_type=rope,attn_type=mqa"
+            ;;
         "positioning_short_seq_len")
             echo "abs:pos_emb_type=absolute,block_size=128"
             echo "rope:pos_emb_type=rope,block_size=128"
@@ -54,7 +59,7 @@ get_variants() {
             ;;
         *)
             echo "ERROR: Unknown experiment '$experiment_name'" >&2
-            echo "Available experiments: positioning, positioning_short_seq_len, attention, gqa_kv_heads_small, gqa_kv_heads_big, normalization, qk_norm, logits_cap, model_size, stress" >&2
+            echo "Available experiments: positioning, positioning_mqa, positioning_short_seq_len, attention, gqa_kv_heads_small, gqa_kv_heads_big, normalization, qk_norm, logits_cap, model_size, stress" >&2
             return 1
             ;;
     esac
@@ -64,6 +69,7 @@ get_variants() {
 list_experiments() {
     echo "Available experiments:"
     echo "  positioning   - RoPE vs Absolute positioning"
+    echo "  positioning_mqa - RoPE vs Absolute positioning with MQA attention"
     echo "  positioning_short_seq_len - RoPE vs Absolute with short block size (128)"
     echo "  attention     - MHA vs GQA vs MQA attention mechanisms"
     echo "  gqa_kv_heads_small - GQA with 2 vs 3 KV heads (small model)"
@@ -73,3 +79,4 @@ list_experiments() {
     echo "  logits_cap    - Different logit softcap values"
     echo "  model_size    - Small vs Medium vs Large model dimensions"
     echo "  stress        - All good vs All bad configurations"
+}

@@ -8,23 +8,6 @@ from dataclasses import dataclass
 
 
 @dataclass
-class GPTConfigD2:  # only used for local experiments
-    block_size: int = 64
-    vocab_size: int = 50304  # 50257
-    n_layer: int = 2
-    n_head: int = 2
-    n_kv_head: int = 2
-    n_emb: int = 128
-    logit_softcap: float = 15.0
-
-    use_rope: bool = True
-    use_rmsnorm: bool = True
-    use_qk_norm: bool = True
-    use_gqa: bool = True
-    use_kv_cache: bool = True
-
-
-@dataclass
 class GPTConfig:  # default d12 model
     block_size: int = 1024
     vocab_size: int = 50304  # 50257
@@ -34,10 +17,10 @@ class GPTConfig:  # default d12 model
     n_emb: int = 768
     logit_softcap: float = 15.0
 
-    use_rope: bool = True
+    pos_emb_type: str = "rope"  # "rope" or "absolute" or "none"
     use_rmsnorm: bool = True
     use_qk_norm: bool = True
-    use_gqa: bool = True
+    attn_type: str = "mha"  # "mha" | "gqa" | "mqa"
     use_kv_cache: bool = True
 
 
@@ -51,17 +34,15 @@ class GPTConfigD20:  # larger d20 model
     n_emb: int = 1280
     logit_softcap: float = 15.0
 
-    use_rope: bool = True
+    pos_emb_type: str = "rope"  # "rope" or "absolute" or "none"
     use_rmsnorm: bool = True
     use_qk_norm: bool = True
-    use_gqa: bool = True
+    attn_type: str = "mha"  # "mha" | "gqa" | "mqa"
     use_kv_cache: bool = True
 
 
 def get_gpt_config(depth, args=None):
-    if depth == "d2":
-        config = GPTConfigD2()
-    elif depth == "d12":
+    if depth == "d12":
         config = GPTConfig()
     elif depth == "d20":
         config = GPTConfigD20()
@@ -71,9 +52,10 @@ def get_gpt_config(depth, args=None):
             "Available depths: d2, d12, d20"
         )
 
+    # check for overrides for ablations
     if args is not None:
         for k, v in vars(args).items():
-            if hasattr(config, k):
+            if hasattr(config, k) and v is not None:
                 setattr(config, k, v)
 
     return config
@@ -177,22 +159,31 @@ class CausalSelfAttention(nn.Module):
         self.config = config
         self.n_head = config.n_head
         self.n_emb = config.n_emb
-        self.n_kv_head = config.n_kv_head
 
+        # resolve KV heads
+        if config.attn_type == "mha":
+            self.n_kv_head = config.n_head
+
+        elif config.attn_type == "gqa":
+            assert (
+                1 < config.n_kv_head < config.n_head
+            ), "For GQA, specify 1 < n_kv_head < n_head"
+            self.n_kv_head = config.n_kv_head
+
+        elif config.attn_type == "mqa":
+            self.n_kv_head = 1
+
+        else:
+            raise ValueError(f"Unknown attn_type: {config.attn_type}")
+
+        # set kv heads
+        self.n_kv_head = config.n_kv_head
+        # set head dim
         self.head_dim = config.n_emb // config.n_head
 
-        if not self.config.use_gqa:
-            self.c_attn = nn.Linear(config.n_emb, 3 * config.n_emb)
-        else:
-            self.c_q = nn.Linear(
-                config.n_emb, config.n_head * self.head_dim, bias=False
-            )
-            self.c_k = nn.Linear(
-                config.n_emb, config.n_kv_head * self.head_dim, bias=False
-            )
-            self.c_v = nn.Linear(
-                config.n_emb, config.n_kv_head * self.head_dim, bias=False
-            )
+        self.c_q = nn.Linear(config.n_emb, config.n_head * self.head_dim, bias=False)
+        self.c_k = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
+        self.c_v = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
 
         self.c_proj = nn.Linear(config.n_emb, config.n_emb)
         self.c_proj.residual_proj = True
@@ -209,22 +200,9 @@ class CausalSelfAttention(nn.Module):
                 past_len = k_past.size(-2)
 
         # project Q, K, V
-        if not self.config.use_gqa:
-            qkv = self.c_attn(x)  # B, T, 3*C
-            q, k, v = qkv.split(self.n_emb, dim=2)
-            q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2)  # B, nH, T, Hs
-            k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)  # B, nH, T, Hs
-            v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)  # B, nH, T, Hs
-        else:
-            q = (
-                self.c_q(x).view(B, T, self.n_head, self.head_dim).transpose(1, 2)
-            )  # B, nH, T, Hs
-            k = (
-                self.c_k(x).view(B, T, self.n_kv_head, self.head_dim).transpose(1, 2)
-            )  # B, n_kvH, T, Hs
-            v = (
-                self.c_v(x).view(B, T, self.n_kv_head, self.head_dim).transpose(1, 2)
-            )  # B, n_kvH, T, Hs
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim).transpose(1, 2)
 
         # qk norm
         if self.config.use_qk_norm:
@@ -232,7 +210,7 @@ class CausalSelfAttention(nn.Module):
             k = norm(k, use_rms=self.config.use_rmsnorm)
 
         # rope
-        if self.config.use_rope:
+        if self.config.pos_emb_type == "rope":
             cos, sin = cos_sin
             q = rope_apply(q, cos, sin, offset=past_len)
             k = rope_apply(k, cos, sin, offset=past_len)
@@ -247,7 +225,11 @@ class CausalSelfAttention(nn.Module):
                 v_full = torch.cat([v_past, v], dim=-2)
 
         y = F.scaled_dot_product_attention(
-            q, k_full, v_full, is_causal=(T > 1), enable_gqa=self.config.use_gqa
+            q,
+            k_full,
+            v_full,
+            is_causal=(T > 1),
+            enable_gqa=(self.n_kv_head < self.n_head),
         )
         y = y.transpose(1, 2).contiguous().view(B, T, C)
 
@@ -281,7 +263,7 @@ class GPTModel(nn.Module):
         self.tokenizer = tiktoken.get_encoding("gpt2")
 
         # precompute rope cache
-        if config.use_rope:
+        if config.pos_emb_type == "rope":
             cos, sin = rope_cache(config.block_size, config.n_emb // config.n_head)
             self.register_buffer("cos", cos, persistent=False)
             self.register_buffer("sin", sin, persistent=False)
@@ -293,7 +275,7 @@ class GPTModel(nn.Module):
                 wte=nn.Embedding(config.vocab_size, config.n_emb),
                 wpe=(
                     nn.Embedding(config.block_size, config.n_emb)
-                    if not config.use_rope
+                    if config.pos_emb_type == "absolute"
                     else None
                 ),
                 h=nn.ModuleList(Block(config) for _ in range(config.n_layer)),
@@ -344,7 +326,7 @@ class GPTModel(nn.Module):
             kv_cache = None
 
         x = self.transformer.wte(idx)  # B, T, C (n_emb)
-        if self.config.use_rope is False:
+        if self.config.pos_emb_type == "absolute":
             positions = torch.arange(0, T, dtype=torch.long, device=idx.device)
             x = x + self.transformer.wpe(positions)  # B, T, C
 

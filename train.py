@@ -47,7 +47,7 @@ def parse_args():
 
     # model
     parser.add_argument(
-        "--model_depth", type=str, choices=["d12", "d20", "d2"], default="d12"
+        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
     )
 
     # batch
@@ -66,14 +66,27 @@ def parse_args():
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
     # logging
-    parser.add_argument("--log_dir", type=str, default="./logs")
-    parser.add_argument("--log_file", type=str, default="train.jsonl")
+    parser.add_argument("--log_dir", type=str, default=None)
+    parser.add_argument("--log_file", type=str, default=None)
 
-    # architecture params
-    parser.add_argument("--use_rope", type=str2bool, default=True)
+    # architecture params (only for ablation experiments)
+    # (keeping None as default will use config defaults based on model depth)
+    parser.add_argument("--block_size", type=int, default=None)
+    # parser.add_argument("--vocab_size", type=int, default=50304)
+    parser.add_argument("--n_layer", type=int, default=None)
+    parser.add_argument("--n_head", type=int, default=None)
+    parser.add_argument("--n_kv_head", type=int, default=None)
+    parser.add_argument("--n_emb", type=int, default=None)
+    parser.add_argument("--logit_softcap", type=float, default=None)
+
+    parser.add_argument(
+        "--pos_emb_type", type=str, choices=["rope", "absolute", "none"], default=None
+    )
     parser.add_argument("--use_rmsnorm", type=str2bool, default=True)
     parser.add_argument("--use_qk_norm", type=str2bool, default=True)
-    parser.add_argument("--use_gqa", type=str2bool, default=True)
+    parser.add_argument(
+        "--attn_type", type=str, choices=["mha", "gqa", "mqa"], default="mha"
+    )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
 
     return parser.parse_args()

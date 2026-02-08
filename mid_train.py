@@ -35,7 +35,7 @@ def parse_args():
 
     # model
     parser.add_argument(
-        "--model_depth", type=str, choices=["d12", "d20", "d2"], default="d12"
+        "--model_depth", type=str, choices=["d12", "d20"], default="d12"
     )
 
     # batch

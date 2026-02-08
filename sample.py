@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument(
         "--model_depth",
         type=str,
-        choices=["d12", "d20", "d2"],
+        choices=["d12", "d20"],
         default="d12",
         help="Model depth configuration",
     )

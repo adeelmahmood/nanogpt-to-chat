@@ -24,16 +24,16 @@ get_variants() {
             ;;
         "attention")
             echo "mha:attn_type=mha" 
-            echo "gqa:attn_type=gqa,num_kv_heads=2"
+            echo "gqa:attn_type=gqa,n_kv_head=2"
             echo "mqa:attn_type=mqa"
             ;;
         "gqa_kv_heads_small")
-            echo "gqa:attn_type=gqa,num_kv_heads=2"
-            echo "gqa:attn_type=gqa,num_kv_heads=3"
+            echo "gqa:attn_type=gqa,n_kv_head=2"
+            echo "gqa:attn_type=gqa,n_kv_head=3"
             ;;
         "gqa_kv_heads_big")
-            echo "gqa:attn_type=gqa,num_kv_heads=2"
-            echo "gqa:attn_type=gqa,num_kv_heads=5"
+            echo "gqa:attn_type=gqa,n_kv_head=2"
+            echo "gqa:attn_type=gqa,n_kv_head=5"
             ;;
         "normalization")
             echo "rms:use_rmsnorm=true"

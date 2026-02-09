@@ -134,6 +134,15 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
     VARIANT_RUN_DIR="runs/${VARIANT_RUN_ID}"
     mkdir -p "${VARIANT_RUN_DIR}"
     
+    # Check if this variant is already completed (resume functionality)
+    if [[ -f "${VARIANT_RUN_DIR}/train.jsonl" ]] || [[ -f "${VARIANT_RUN_DIR}/train.jsonl.jsonl" ]]; then
+        echo "✅ SKIPPING: ${variant_name} - already completed"
+        echo "   Found existing log: ${VARIANT_RUN_DIR}/"
+        echo "   Delete the log file to force re-run"
+        echo
+        continue
+    fi
+    
     # Initialize variant-specific max_steps (default to global MAX_STEPS)
     VARIANT_MAX_STEPS="$MAX_STEPS"
     

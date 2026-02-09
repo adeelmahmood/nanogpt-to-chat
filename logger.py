@@ -8,7 +8,7 @@ class MetricLogger:
         if not self.is_logging:
             return
         os.makedirs(out_dir, exist_ok=True)
-        self.path = os.path.join(out_dir, f"{file_name}.jsonl")
+        self.path = os.path.join(out_dir, file_name)
 
     def log(self, step, **metrics):
         if not self.is_logging:

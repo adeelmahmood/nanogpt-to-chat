@@ -74,12 +74,12 @@ fi
 # Set training parameters based on model size
 if [[ "$MODEL_DEPTH" == "d20" ]]; then
     BATCH_SIZE=8
-    DEVICE_BATCH_SIZE=16384
-    MAX_STEPS=1000
+    DEVICE_BATCH_SIZE=32768
+    MAX_STEPS=2000
 else  # d12
     BATCH_SIZE=8
     DEVICE_BATCH_SIZE=32768
-    MAX_STEPS=2000
+    MAX_STEPS=4000
 fi
 
 TOTAL_BATCH_SIZE=$((DEVICE_BATCH_SIZE * NPROC_PER_NODE))

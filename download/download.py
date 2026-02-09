@@ -11,7 +11,6 @@ tokenizer = tiktoken.get_encoding("gpt2")
 eot = tokenizer.eot_token
 
 shard_size = int(1e8)  # 100M tokens per shard
-files_downloaded = 0
 
 
 def parse_args():
@@ -39,13 +38,6 @@ def parse_args():
         help="Local directory to save the dataset.",
     )
 
-    parser.add_argument(
-        "--limit_files_downloaded",
-        type=int,
-        default=-1,
-        help="Limit the number of files downloaded (for testing). Set to -1 for no limit.",
-    )
-
     args = parser.parse_args()
     return args
 
@@ -58,12 +50,10 @@ def tokenize(doc):
 
 
 def main():
-    global files_downloaded
     args = parse_args()
     dataset_name = args.dataset_name
     remote_name = args.remote_name
     local_dir = args.local_dir
-    limit_files = args.limit_files_downloaded
 
     # create the dir
     os.makedirs(local_dir, exist_ok=True)
@@ -87,9 +77,6 @@ def main():
         token_count = 0
 
         for tokens in pool.imap(tokenize, ds, chunksize=16):
-            if limit_files != -1 and files_downloaded >= limit_files:
-                print(f"Reached file limit of {limit_files}. Stopping download.")
-                break
 
             if token_count + len(tokens) < shard_size:
                 all_tokens_np[token_count : token_count + len(tokens)] = tokens
@@ -105,7 +92,6 @@ def main():
                 ]
                 np.save(filename, all_tokens_np)
                 print(f"Saved shard {filename} with {shard_size:,} tokens")
-                files_downloaded += 1
 
                 shard_index += 1
 
@@ -120,7 +106,6 @@ def main():
             filename = os.path.join(local_dir, f"{split}_{shard_index:06d}")
             np.save(filename, all_tokens_np[:token_count])
             print(f"Saved final shard {filename} with {token_count:,} tokens")
-            files_downloaded += 1
 
 
 if __name__ == "__main__":

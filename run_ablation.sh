@@ -29,11 +29,11 @@ echo "Model: ${MODEL_DEPTH}"
 echo
 
 # Create ablation-specific results directory (include model depth)
-RESULTS_DIR="ablations/results/${EXPERIMENT_DATE}_${EXPERIMENT_NAME}_${MODEL_DEPTH}"
+RESULTS_DIR="ablations/results/${EXPERIMENT_DATE}/${EXPERIMENT_NAME}_${MODEL_DEPTH}"
 mkdir -p "$RESULTS_DIR"
 
 # Dataset setup - check if dataset exists locally
-DATASET="ts"
+DATASET="fw"
 if [[ "$DATASET" == "fw" ]]; then
     DATASET_DIR="download/edu_fineweb10B"
 elif [[ "$DATASET" == "ts" ]]; then
@@ -130,7 +130,7 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
     echo "============================================"
     
     # Set up run-specific directory for this variant
-    VARIANT_RUN_ID="${EXPERIMENT_DATE}_${EXPERIMENT_NAME}_${MODEL_DEPTH}_${variant_name}"
+    VARIANT_RUN_ID="${EXPERIMENT_DATE}/${EXPERIMENT_NAME}_${MODEL_DEPTH}_${variant_name}"
     VARIANT_RUN_DIR="runs/${VARIANT_RUN_ID}"
     mkdir -p "${VARIANT_RUN_DIR}"
     
@@ -181,7 +181,7 @@ echo "============================================"
 
 # Generate ablation plots - look for logs in run directories
 TITLE="$(echo "${EXPERIMENT_NAME}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}') Ablation Study (${MODEL_DEPTH} - ${EXPERIMENT_DATE})"
-python ablations.py --filter-pattern "${EXPERIMENT_DATE}_${EXPERIMENT_NAME}_${MODEL_DEPTH}_*" \
+python ablations.py --filter-pattern "${EXPERIMENT_DATE}/${EXPERIMENT_NAME}_${MODEL_DEPTH}_*" \
                    --output-dir "$RESULTS_DIR" \
                    --title "$TITLE" \
                    --runs-dir "runs"

@@ -181,10 +181,10 @@ echo "============================================"
 
 # Generate ablation plots - look for logs in run directories
 TITLE="$(echo "${EXPERIMENT_NAME}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}') Ablation Study (${MODEL_DEPTH} - ${EXPERIMENT_DATE})"
-python ablations.py --filter-pattern "${EXPERIMENT_DATE}/${EXPERIMENT_NAME}_${MODEL_DEPTH}_*" \
+python ablations.py --filter-pattern "${EXPERIMENT_NAME}_${MODEL_DEPTH}_*" \
                    --output-dir "$RESULTS_DIR" \
                    --title "$TITLE" \
-                   --runs-dir "runs"
+                   --runs-dir "runs/${EXPERIMENT_DATE}"
 
 echo "✅ Ablation study complete!"
 echo "📊 Results saved to: ${RESULTS_DIR}"

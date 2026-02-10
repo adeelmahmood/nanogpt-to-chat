@@ -176,12 +176,14 @@ class CausalSelfAttention(nn.Module):
         else:
             raise ValueError(f"Unknown attn_type: {config.attn_type}")
 
+        # set kv heads
+        self.n_kv_head = config.n_kv_head
         # set head dim
         self.head_dim = config.n_emb // config.n_head
 
         self.c_q = nn.Linear(config.n_emb, config.n_head * self.head_dim, bias=False)
-        self.c_k = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
-        self.c_v = nn.Linear(config.n_emb, config.n_kv_head * self.head_dim, bias=False)
+        self.c_k = nn.Linear(config.n_emb, self.n_kv_head * self.head_dim, bias=False)
+        self.c_v = nn.Linear(config.n_emb, self.n_kv_head * self.head_dim, bias=False)
 
         self.c_proj = nn.Linear(config.n_emb, config.n_emb)
         self.c_proj.residual_proj = True

@@ -35,6 +35,10 @@ get_variants() {
             echo "gqa_2:attn_type=gqa,n_kv_head=2"
             echo "gqa_5:attn_type=gqa,n_kv_head=5"
             ;;
+        "stability")
+            echo "stable:use_rmsnorm=true,use_qk_norm=true,logit_softcap=15.0"
+            echo "unstable:use_rmsnorm=false,use_qk_norm=false,logit_softcap=0.0"
+            ;;
         "normalization")
             echo "rms:use_rmsnorm=true"
             echo "layer:use_rmsnorm=false"

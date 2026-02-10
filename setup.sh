@@ -18,7 +18,7 @@ sudo dnf install -y git nvme-cli python3.11 python3.11-devel python3.11-pip mdad
 echo "== Detecting instance-store NVMe devices =="
 
 mapfile -t INSTANCE_DEVS < <(
-  lsblk -ndo NAME,MODEL | awk '$2 ~ /Instance Storage/ {print "/dev/"$1}'
+  lsblk -ndo NAME,MODEL -P | awk -F'"' '$4 ~ /Instance Storage/ {print "/dev/"$2}'
 )
 
 if [ ${#INSTANCE_DEVS[@]} -eq 0 ]; then
@@ -35,31 +35,33 @@ sudo mkdir -p "$MOUNT_POINT"
 if mountpoint -q "$MOUNT_POINT"; then
   echo "Instance-store already mounted at $MOUNT_POINT"
 
+elif [ ${#INSTANCE_DEVS[@]} -eq 1 ]; then
+  DEV="${INSTANCE_DEVS[0]}"
+  echo "Using single instance-store device $DEV"
+
+  if ! blkid "$DEV" >/dev/null 2>&1; then
+    sudo mkfs.ext4 -F "$DEV"
+  fi
+
+  sudo mount "$DEV" "$MOUNT_POINT"
+
 else
-  if [ ${#INSTANCE_DEVS[@]} -eq 1 ]; then
-    DEV="${INSTANCE_DEVS[0]}"
-    echo "Using single instance-store device $DEV"
+  echo "Using RAID0 over instance-store devices"
 
-    if ! blkid "$DEV" >/dev/null 2>&1; then
-      sudo mkfs.ext4 -F "$DEV"
-    fi
-
-    sudo mount "$DEV" "$MOUNT_POINT"
-
-  else
-    echo "Using RAID0 over instance-store devices"
-
-    if [ ! -e /dev/md0 ]; then
-      sudo mdadm --create /dev/md0 \
-        --level=0 \
-        --raid-devices=${#INSTANCE_DEVS[@]} \
-        "${INSTANCE_DEVS[@]}"
-    fi
-
+  if [ -e /dev/md0 ]; then
     if ! blkid /dev/md0 >/dev/null 2>&1; then
       sudo mkfs.ext4 -F /dev/md0
     fi
+    sudo mount /dev/md0 "$MOUNT_POINT"
+  else
+    sudo mdadm --create /dev/md0 \
+      --level=0 \
+      --raid-devices=${#INSTANCE_DEVS[@]} \
+      "${INSTANCE_DEVS[@]}"
 
+    udevadm settle
+
+    sudo mkfs.ext4 -F /dev/md0
     sudo mount /dev/md0 "$MOUNT_POINT"
   fi
 fi
@@ -69,6 +71,7 @@ sudo chown -R "$USER:$USER" "$MOUNT_POINT"
 echo "== Disk sanity check =="
 lsblk -o NAME,SIZE,MODEL,MOUNTPOINT
 df -h "$MOUNT_POINT"
+
 
 ########################################
 # Directory layout

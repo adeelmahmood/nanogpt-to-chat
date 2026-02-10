@@ -51,7 +51,7 @@ get_variants() {
         "model_size")
             echo "d6:block_size=512,n_layer=6,n_head=3,n_kv_head=3,n_emb=384,max_steps=2000"
             echo "d12:block_size=1024,n_layer=12,n_head=6,n_kv_head=6,n_emb=768,max_steps=4000"
-            echo "d20:block_size=2048,n_layer=20,n_head=10,n_kv_head=10,n_emb=1280,max_steps=8000"
+            echo "d20:block_size=2048,n_layer=20,n_head=10,n_kv_head=10,n_emb=1280,max_steps=6000"
             ;;
         "stress")
             echo "all_good:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"

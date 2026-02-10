@@ -24,5 +24,3 @@ runs
 wandb
 
 .DS_Store
-
-ablations

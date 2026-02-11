@@ -341,9 +341,10 @@ class GPTModel(nn.Module):
         x = norm(x, use_rms=self.config.use_rmsnorm)
         logits = self.lm_head(x)  # B, T, C (vocab_size)
         # apply logit softcap, this is helpful with untied weights and split optims
-        logits = self.config.logit_softcap * torch.tanh(
-            logits / self.config.logit_softcap
-        )
+        if self.config.logit_softcap is not None and self.config.logit_softcap > 0.0:
+            logits = self.config.logit_softcap * torch.tanh(
+                logits / self.config.logit_softcap
+            )
 
         loss = None
         if targets is not None:

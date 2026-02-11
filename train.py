@@ -88,6 +88,7 @@ def parse_args():
         "--attn_type", type=str, choices=["mha", "gqa", "mqa"], default="mha"
     )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
+    parser.add_argument("--lr_alpha", type=str2bool, default=True)
 
     return parser.parse_args()
 
@@ -165,6 +166,9 @@ def main():
     optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
+        if args.lr_alpha:
+            pg["initial_lr"] *= args.lr_alpha
+            print0(f"Applied lr_alpha={args.lr_alpha}, new ilr={pg['initial_lr']:.6f}")
 
     num_params = sum(p.nelement() for p in model.parameters())
     print0(f"\nModel parameters: {num_params/1e6:.2f}M")
@@ -345,6 +349,29 @@ def main():
             # backward pass
             loss.backward()
 
+        # ---- grad norm (no clipping) ----
+        total_grad_sq = torch.zeros(1, device=device)
+        for p in model.parameters():
+            if p.grad is not None:
+                total_grad_sq += p.grad.detach().pow(2).sum()
+        grad_norm = total_grad_sq.sqrt()
+
+        # ---- matrix update ratio ----
+        matrix_update_sq = torch.zeros(1, device=device)
+        matrix_weight_sq = torch.zeros(1, device=device)
+
+        for pg in optimizer.param_groups:
+            if pg.get("name") == "matrix":
+                lr = pg["initial_lr"] * lrm  # current effective LR
+                for p in pg["params"]:
+                    if p.grad is not None:
+                        matrix_update_sq += (lr * p.grad).detach().pow(2).sum()
+                        matrix_weight_sq += p.detach().pow(2).sum()
+
+        matrix_update_ratio = matrix_update_sq.sqrt() / (
+            matrix_weight_sq.sqrt() + 1e-12
+        )
+
         # gather loss from all ranks
         if ddp:
             dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
@@ -391,6 +418,8 @@ def main():
                 total_time=total_time,
                 eta_seconds=eta_seconds,
                 total_tokens=total_tokens,
+                grad_norm=grad_norm.item(),
+                update_ratio_matrix=matrix_update_ratio.item(),
             )
 
         if master_process and send_to_wandb:

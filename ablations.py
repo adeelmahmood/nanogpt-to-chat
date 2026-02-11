@@ -25,21 +25,32 @@ def load_run(path):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Generate ablation study plots')
-    parser.add_argument('--filter-pattern', type=str, help='Pattern to filter run names (e.g., "*positioning*")')
-    parser.add_argument('--output-dir', type=str, default='.', help='Output directory for plots')
-    parser.add_argument('--title', type=str, default='Ablation Study', help='Plot title')
-    parser.add_argument('--runs-dir', type=str, default='runs', help='Directory containing run logs')
+    parser = argparse.ArgumentParser(description="Generate ablation study plots")
+    parser.add_argument(
+        "--filter-pattern",
+        type=str,
+        help='Pattern to filter run names (e.g., "*positioning*")',
+    )
+    parser.add_argument(
+        "--output-dir", type=str, default=".", help="Output directory for plots"
+    )
+    parser.add_argument(
+        "--title", type=str, default="Ablation Study", help="Plot title"
+    )
+    parser.add_argument(
+        "--runs-dir", type=str, default="runs", help="Directory containing run logs"
+    )
     return parser.parse_args()
+
 
 def load_runs(runs_dir="runs", filter_pattern=None):
     runs = {}
-    
+
     # Look for both old format (runs/*.jsonl) and new format (runs/*/train.jsonl)
     if os.path.exists(runs_dir):
         for item in os.listdir(runs_dir):
             item_path = os.path.join(runs_dir, item)
-            
+
             if item.endswith(".jsonl"):
                 # Old format: runs/run_name.jsonl
                 run_name = item[:-6]
@@ -55,20 +66,21 @@ def load_runs(runs_dir="runs", filter_pattern=None):
                         continue
             else:
                 continue
-            
+
             # Apply filter if specified
             if filter_pattern and not fnmatch.fnmatch(run_name, filter_pattern):
                 continue
-                
+
             runs[run_name] = load_run(log_file)
-    
+
     return runs
+
 
 def generate_plots(runs, title="Ablation Study", output_dir="."):
     if not runs:
         print("No runs found matching the filter pattern!")
         return
-        
+
     fig, axes = plt.subplots(2, 3, figsize=(20, 10))
     (
         ax_loss_steps,
@@ -105,28 +117,27 @@ def generate_plots(runs, title="Ablation Study", output_dir="."):
     ax_throughput.set_xlabel("Steps")
     ax_throughput.set_ylabel("Tokens / Sec (EMA)")
 
-    # ---------- Instability: |Δloss| ----------
+    # ---------- Grad Norm ----------
     for name, run in runs.items():
-        loss = np.array(run["train_loss"])
-        delta = np.abs(np.diff(loss))
-        ax_instability.plot(run["step"][1:], ema(delta), label=name)
+        if "grad_norm" in run:
+            ax_instability.plot(run["step"], ema(run["grad_norm"]), label=name)
 
-    ax_instability.set_title(f"{title} - Instability: |Δ Loss|")
+    ax_instability.set_title(f"{title} - Grad Norm")
     ax_instability.set_xlabel("Steps")
-    ax_instability.set_ylabel("|Δ Loss| (EMA)")
+    ax_instability.set_ylabel("Grad Norm (EMA)")
 
-    # ---------- Max instability summary ----------
-    names = []
-    max_deltas = []
+    # ---------- Update Ratio (Matrix) ----------
     for name, run in runs.items():
-        loss = np.array(run["train_loss"])
-        max_deltas.append(np.max(np.abs(np.diff(loss))))
-        names.append(name)
+        if "update_ratio_matrix" in run:
+            ax_max_instability.plot(
+                run["step"],
+                ema(run["update_ratio_matrix"]),
+                label=name,
+            )
 
-    ax_max_instability.bar(names, max_deltas)
-    ax_max_instability.set_title(f"{title} - Worst-Case Instability")
-    ax_max_instability.set_ylabel("Max |Δ Loss|")
-    ax_max_instability.tick_params(axis="x", rotation=45)
+    ax_max_instability.set_title(f"{title} - Matrix Update Ratio")
+    ax_max_instability.set_xlabel("Steps")
+    ax_max_instability.set_ylabel("||ΔW|| / ||W|| (EMA)")
 
     # ---------- Empty / future ----------
     ax_empty.axis("off")
@@ -141,10 +152,10 @@ def generate_plots(runs, title="Ablation Study", output_dir="."):
         "  Lower loss at the same tokens = better model.\n\n"
         "Throughput:\n"
         "  How fast each model trains.\n\n"
-        "|Δ Loss| (Instability):\n"
+        "Grad Norm (Instability):\n"
         "  Measures how jumpy training is.\n"
         "  Big spikes mean instability.\n\n"
-        "Max |Δ Loss|:\n"
+        "Update Ratio (Matrix):\n"
         "  Single worst jump during training.\n\n"
         f"Comparing: {list(runs.keys())}"
     )
@@ -159,30 +170,32 @@ def generate_plots(runs, title="Ablation Study", output_dir="."):
     )
 
     plt.tight_layout()
-    
+
     # Save plot
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "ablation_plots.png")
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"Plots saved to: {output_path}")
-    
+
     plt.show()
+
 
 def main():
     args = parse_args()
-    
+
     print(f"Loading runs from: {args.runs_dir}")
     if args.filter_pattern:
         print(f"Filtering with pattern: {args.filter_pattern}")
-    
+
     runs = load_runs(args.runs_dir, args.filter_pattern)
-    
+
     print(f"Found {len(runs)} runs: {list(runs.keys())}")
-    
+
     if runs:
         generate_plots(runs, args.title, args.output_dir)
     else:
         print("No runs found!")
+
 
 if __name__ == "__main__":
     main()

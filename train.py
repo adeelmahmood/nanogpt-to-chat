@@ -88,7 +88,7 @@ def parse_args():
         "--attn_type", type=str, choices=["mha", "gqa", "mqa"], default="mha"
     )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
-    parser.add_argument("--lr_alpha", type=str2bool, default=True)
+    parser.add_argument("--lr_alpha", type=float, default=1.0)
 
     return parser.parse_args()
 
@@ -166,7 +166,7 @@ def main():
     optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
-        if args.lr_alpha:
+        if args.lr_alpha != 1.0:
             pg["initial_lr"] *= args.lr_alpha
             print0(f"Applied lr_alpha={args.lr_alpha}, new ilr={pg['initial_lr']:.6f}")
 
@@ -356,6 +356,21 @@ def main():
                 total_grad_sq += p.grad.detach().pow(2).sum()
         grad_norm = total_grad_sq.sqrt()
 
+        # gather loss from all ranks
+        if ddp:
+            dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
+
+        # get learning rate multiplier
+        lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.0)
+        lr_logs = {
+            "lr/multiplier": lrm,
+        }
+        for pg in optimizer.param_groups:
+            pg["lr"] = pg["initial_lr"] * lrm
+            # for logging
+            name = pg.get("name", "unknown")
+            lr_logs[f"lr/{name}"] = pg["lr"]
+
         # ---- matrix update ratio ----
         matrix_update_sq = torch.zeros(1, device=device)
         matrix_weight_sq = torch.zeros(1, device=device)
@@ -372,20 +387,8 @@ def main():
             matrix_weight_sq.sqrt() + 1e-12
         )
 
-        # gather loss from all ranks
         if ddp:
-            dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
-
-        # get learning rate multiplier
-        lrm = get_lr_multiplier(step, warmup_steps, max_steps, 0.0)
-        lr_logs = {
-            "lr/multiplier": lrm,
-        }
-        for pg in optimizer.param_groups:
-            pg["lr"] = pg["initial_lr"] * lrm
-            # for logging
-            name = pg.get("name", "unknown")
-            lr_logs[f"lr/{name}"] = pg["lr"]
+            dist.all_reduce(matrix_update_ratio, op=dist.ReduceOp.AVG)
 
         # update
         optimizer.step()

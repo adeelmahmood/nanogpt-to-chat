@@ -181,11 +181,11 @@ class CausalSelfAttention(nn.Module):
         # set head dim
         self.head_dim = config.n_emb // config.n_head
 
-        self.c_q = nn.Linear(config.n_emb, config.n_head * self.head_dim, bias=False)
+        self.c_q = nn.Linear(config.n_emb, self.n_head * self.head_dim, bias=False)
         self.c_k = nn.Linear(config.n_emb, self.n_kv_head * self.head_dim, bias=False)
         self.c_v = nn.Linear(config.n_emb, self.n_kv_head * self.head_dim, bias=False)
 
-        self.c_proj = nn.Linear(config.n_emb, config.n_emb)
+        self.c_proj = nn.Linear(self.n_emb, self.n_emb)
         self.c_proj.residual_proj = True
 
     def forward(self, x, cos_sin, kv_cache: KVCache | None = None, layer_idx=0):

@@ -88,7 +88,8 @@ def parse_args():
         "--attn_type", type=str, choices=["mha", "gqa", "mqa"], default="mha"
     )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
-    parser.add_argument("--lr_alpha", type=float, default=1.0)
+    parser.add_argument("--lr_alpha", type=float, default=0.45)
+    parser.add_argument("--matrix_lr_alpha", type=float, default=1.0)
 
     return parser.parse_args()
 
@@ -166,9 +167,16 @@ def main():
     optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
+        # fixed alpha
         if args.lr_alpha != 1.0:
             pg["initial_lr"] *= args.lr_alpha
-            print0(f"Applied lr_alpha={args.lr_alpha}, new ilr={pg['initial_lr']:.6f}")
+            print0(f">Applied lr_alpha={args.lr_alpha}, new ilr={pg['initial_lr']:.6f}")
+        # layer level alpha
+        if args.matrix_lr_alpha != 1.0 and pg.get("name") == "matrix":
+            pg["initial_lr"] *= args.matrix_lr_alpha
+            print0(
+                f">>Applied matrix_lr_alpha={args.matrix_lr_alpha}, new ilr={pg['initial_lr']:.6f}"
+            )
 
     num_params = sum(p.nelement() for p in model.parameters())
     print0(f"\nModel parameters: {num_params/1e6:.2f}M")

@@ -53,23 +53,27 @@ get_variants() {
             echo "softcap_30:logit_softcap=30.0"
             ;;
         "lr_alpha_sweep")
-            echo "alpha_0.5:lr_alpha=0.5"
-            echo "alpha_1.0:lr_alpha=1.0"
-            echo "alpha_1.5:lr_alpha=1.5"
-            echo "alpha_2.0:lr_alpha=2.0"
+            echo "alpha_0.40:lr_alpha=0.40"
+            echo "alpha_0.45:lr_alpha=0.45"
+            echo "alpha_1.00:lr_alpha=1.00"
+            ;;
+        "matrix_lr_alpha_sweep")
+            echo "matrix_alpha_0.5:matrix_lr_alpha=0.5,max_steps=1000"
+            echo "matrix_alpha_1.0:matrix_lr_alpha=1.0,max_steps=1000"
+            echo "matrix_alpha_1.5:matrix_lr_alpha=1.5,max_steps=1000"
             ;;
         "model_size")
             echo "d6:block_size=512,n_layer=6,n_head=3,n_kv_head=3,n_emb=384,max_steps=2000"
             echo "d12:block_size=1024,n_layer=12,n_head=6,n_kv_head=6,n_emb=768,max_steps=4000"
             echo "d20:block_size=2048,n_layer=20,n_head=10,n_kv_head=10,n_emb=1280,max_steps=6000"
             ;;
-        "stress")
-            echo "all_good:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
-            echo "all_bad:pos_emb_type=absolute,use_rmsnorm=false,use_qk_norm=false,attn_type=mqa,use_kv_cache=false"
+        "endtoend")
+            echo "improved:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
+            echo "current:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
+            echo "baseline:pos_emb_type=absolute,use_rmsnorm=false,use_qk_norm=false,attn_type=mqa,use_kv_cache=false"
             ;;
         *)
             echo "ERROR: Unknown experiment '$experiment_name'" >&2
-            echo "Available experiments: positioning, positioning_mqa, positioning_short_seq_len, attention, gqa_kv_heads_small, gqa_kv_heads_big, normalization, qk_norm, logits_cap, lr_alpha_sweep, model_size, stress" >&2
             return 1
             ;;
     esac
@@ -88,6 +92,7 @@ list_experiments() {
     echo "  qk_norm       - With vs Without QK normalization"
     echo "  logits_cap    - Different logit softcap values"
     echo "  lr_alpha_sweep - Different learning rate alpha values"
+    echo "  matrix_lr_alpha_sweep - Different matrix learning rate alpha values"
     echo "  model_size    - d6 vs d12 vs d20 model dimensions"
     echo "  stress        - All good vs All bad configurations"
 }

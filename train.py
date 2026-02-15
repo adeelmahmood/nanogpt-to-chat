@@ -57,6 +57,7 @@ def parse_args():
 
     # training
     parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--max_tokens", type=int, default=-1)
     parser.add_argument("--eval_every", type=int, default=None)
     parser.add_argument("--save_every", type=int, default=None)
 
@@ -88,8 +89,11 @@ def parse_args():
         "--attn_type", type=str, choices=["mha", "gqa", "mqa"], default="mha"
     )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
-    parser.add_argument("--lr_alpha", type=float, default=0.45)
-    parser.add_argument("--matrix_lr_alpha", type=float, default=1.0)
+
+    parser.add_argument("--lr_alpha", type=float, default=0.55)
+    parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
+    parser.add_argument("--embed_lr_alpha", type=float, default=1.0)
+    parser.add_argument("--resid_lambda_alpha", type=float, default=1.0)
 
     return parser.parse_args()
 
@@ -161,6 +165,11 @@ def main():
         1, math.ceil(total_batch_size / (B * T * ddp_world_size))
     )
 
+    # if max token limit is set, adjust max steps to be large but not infinite
+    if args.max_tokens != -1:
+        orig_max_steps = max_steps
+        max_steps = min(max_steps, math.ceil(args.max_tokens / total_batch_size))
+
     model = GPTModel(config).to(device)
 
     # initiatlize the optimizer
@@ -176,6 +185,16 @@ def main():
             pg["initial_lr"] *= args.matrix_lr_alpha
             print0(
                 f">>Applied matrix_lr_alpha={args.matrix_lr_alpha}, new ilr={pg['initial_lr']:.6f}"
+            )
+        if args.embed_lr_alpha != 1.0 and pg.get("name") == "embed":
+            pg["initial_lr"] *= args.embed_lr_alpha
+            print0(
+                f">>Applied embed_lr_alpha={args.embed_lr_alpha}, new ilr={pg['initial_lr']:.6f}"
+            )
+        if args.resid_lambda_alpha != 1.0 and pg.get("name") == "resid_lambda":
+            pg["initial_lr"] *= args.resid_lambda_alpha
+            print0(
+                f">>Applied resid_lambda_alpha={args.resid_lambda_alpha}, new ilr={pg['initial_lr']:.6f}"
             )
 
     num_params = sum(p.nelement() for p in model.parameters())
@@ -264,7 +283,9 @@ def main():
         print(f"model_depth    : {args.model_depth}")
         print(f"batch_size     : {B}")
         print(f"block_size     : {config.block_size}")
-        print(f"max_steps      : {max_steps}")
+        print(
+            f"max_steps      : {max_steps if args.max_tokens == -1 else f'{orig_max_steps} (adjusted to {max_steps} due to max_tokens: {args.max_tokens:,})'}"
+        )
         print(f"eval_every     : {eval_every}")
         print(f"save_every     : {save_every}")
         if hasattr(args, "resume_ckpt") and args.resume_ckpt is not None:

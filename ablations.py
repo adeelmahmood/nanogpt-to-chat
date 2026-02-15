@@ -157,7 +157,7 @@ def generate_plots(runs, title="Ablation Study", output_dir="."):
         "  Big spikes mean instability.\n\n"
         "Update Ratio (Matrix):\n"
         "  Single worst jump during training.\n\n"
-        f"Comparing: {list(runs.keys())}"
+        f"Comparing:\n{chr(10).join(runs.keys())}"
     )
 
     ax_empty.text(

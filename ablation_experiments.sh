@@ -57,15 +57,34 @@ get_variants() {
             echo "alpha_0.45:lr_alpha=0.45"
             echo "alpha_1.00:lr_alpha=1.00"
             ;;
+        "resid_lambda_alpha_sweep")
+            echo "resid_lambda_alpha_0.5:resid_lambda_alpha=0.5,max_tokens=10000"
+            echo "resid_lambda_alpha_1.0:resid_lambda_alpha=1.0,max_tokens=10000"
+            echo "resid_lambda_alpha_1.5:resid_lambda_alpha=1.5,max_tokens=10000"
+            ;;
         "matrix_lr_alpha_sweep")
-            echo "matrix_alpha_0.5:matrix_lr_alpha=0.5,max_steps=1000"
-            echo "matrix_alpha_1.0:matrix_lr_alpha=1.0,max_steps=1000"
-            echo "matrix_alpha_1.5:matrix_lr_alpha=1.5,max_steps=1000"
+            echo "matrix_alpha_0.5:matrix_lr_alpha=0.5,max_tokens=10000"
+            echo "matrix_alpha_1.0:matrix_lr_alpha=1.0,max_tokens=10000"
+            echo "matrix_alpha_1.5:matrix_lr_alpha=1.5,max_tokens=10000"
             ;;
         "model_size")
             echo "d6:block_size=512,n_layer=6,n_head=3,n_kv_head=3,n_emb=384,max_steps=2000"
             echo "d12:block_size=1024,n_layer=12,n_head=6,n_kv_head=6,n_emb=768,max_steps=4000"
             echo "d20:block_size=2048,n_layer=20,n_head=10,n_kv_head=10,n_emb=1280,max_steps=6000"
+            ;;
+        "embed_alpha_scale_check")
+            echo "embed_alpha_0.25:lr_alpha=0.55,matrix_lr_alpha=0.16,embed_lr_alpha=0.25,max_tokens=150000000"
+            echo "embed_alpha_1.0:lr_alpha=0.55,matrix_lr_alpha=0.16,embed_lr_alpha=1.0,max_tokens=150000000"
+            echo "embed_alpha_2.0:lr_alpha=0.55,matrix_lr_alpha=0.16,embed_lr_alpha=2.0,max_tokens=150000000"
+            ;;
+        "resid_lambda_scale_check")
+            echo "resid_lambda_alpha_0.5:lr_alpha=0.55,matrix_lr_alpha=0.16,resid_lambda_alpha=0.5,max_tokens=150000000"
+            echo "resid_lambda_alpha_1.0:lr_alpha=0.55,matrix_lr_alpha=0.16,resid_lambda_alpha=1.0,max_tokens=150000000"
+            echo "resid_lambda_alpha_1.5:lr_alpha=0.55,matrix_lr_alpha=0.16,resid_lambda_alpha=1.5,max_tokens=150000000"
+            ;;
+        "long_run_global_matrix_confirm")
+            echo "best_config:lr_alpha=0.55,matrix_lr_alpha=0.16,max_tokens=1000000000"
+            echo "runnerup_config:lr_alpha=0.45,matrix_lr_alpha=0.16,max_tokens=1000000000"
             ;;
         "endtoend")
             echo "improved:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
@@ -93,6 +112,7 @@ list_experiments() {
     echo "  logits_cap    - Different logit softcap values"
     echo "  lr_alpha_sweep - Different learning rate alpha values"
     echo "  matrix_lr_alpha_sweep - Different matrix learning rate alpha values"
+    echo "  resid_lambda_alpha_sweep - Different residual lambda alpha values"
     echo "  model_size    - d6 vs d12 vs d20 model dimensions"
     echo "  stress        - All good vs All bad configurations"
 }

@@ -82,9 +82,11 @@ get_variants() {
             echo "resid_lambda_alpha_1.0:lr_alpha=0.55,matrix_lr_alpha=0.16,resid_lambda_alpha=1.0,max_tokens=150000000"
             echo "resid_lambda_alpha_1.5:lr_alpha=0.55,matrix_lr_alpha=0.16,resid_lambda_alpha=1.5,max_tokens=150000000"
             ;;
-        "long_run_global_matrix_confirm")
-            echo "best_config:lr_alpha=0.55,matrix_lr_alpha=0.16,max_tokens=1000000000"
-            echo "runnerup_config:lr_alpha=0.45,matrix_lr_alpha=0.16,max_tokens=1000000000"
+        "global_matrix_confirm_500M-Tokens")
+            echo "baseline_original:lr_alpha=1.0,matrix_lr_alpha=1.0,max_tokens=500000000"
+            echo "global_0.45_matrix016:lr_alpha=0.45,matrix_lr_alpha=0.16,max_tokens=500000000"
+            echo "global_0.55_matrix016:lr_alpha=0.55,matrix_lr_alpha=0.16,max_tokens=500000000"
+            echo "global_0.55_matrix020:lr_alpha=0.55,matrix_lr_alpha=0.20,max_tokens=500000000"
             ;;
         "endtoend")
             echo "improved:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"

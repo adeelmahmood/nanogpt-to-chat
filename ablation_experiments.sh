@@ -23,17 +23,17 @@ get_variants() {
             echo "rope:pos_emb_type=rope,block_size=128"
             ;;
         "attention")
-            echo "mha:attn_type=mha" 
-            echo "gqa:attn_type=gqa,n_kv_head=2"
-            echo "mqa:attn_type=mqa"
+            echo "mha:attn_type=mha,max_tokens=300000000" 
+            echo "gqa:attn_type=gqa,n_kv_head=2,max_tokens=300000000"
+            echo "mqa:attn_type=mqa,max_tokens=300000000"
             ;;
         "gqa_kv_heads_small")
-            echo "gqa_2:attn_type=gqa,n_kv_head=2"
-            echo "gqa_3:attn_type=gqa,n_kv_head=3"
+            echo "gqa_2:attn_type=gqa,n_kv_head=2,max_tokens=150000000"
+            echo "gqa_3:attn_type=gqa,n_kv_head=3,max_tokens=150000000"
             ;;
         "gqa_kv_heads_big")
-            echo "gqa_2:attn_type=gqa,n_kv_head=2"
-            echo "gqa_5:attn_type=gqa,n_kv_head=5"
+            echo "gqa_2:attn_type=gqa,n_kv_head=2,max_tokens=300000000"
+            echo "gqa_5:attn_type=gqa,n_kv_head=5,max_tokens=300000000"
             ;;
         "stability")
             echo "stable:use_rmsnorm=true,use_qk_norm=true,logit_softcap=15.0"
@@ -58,9 +58,9 @@ get_variants() {
             echo "d20:block_size=2048,n_layer=20,n_head=10,n_kv_head=10,n_emb=1280,max_steps=6000"
             ;;
         "lr_alpha_sweep")
-            echo "alpha_0.40:lr_alpha=0.40"
-            echo "alpha_0.45:lr_alpha=0.45"
-            echo "alpha_1.00:lr_alpha=1.00"
+            echo "alpha_0.40:lr_alpha=0.40,max_tokens=150000000"
+            echo "alpha_0.45:lr_alpha=0.45,max_tokens=150000000"
+            echo "alpha_1.00:lr_alpha=1.00,max_tokens=150000000"
             ;;
         "matrix_lr_alpha_sweep")
             echo "matrix_alpha_0.08:matrix_lr_alpha=0.08,max_tokens=150000000"

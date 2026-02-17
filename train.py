@@ -90,7 +90,7 @@ def parse_args():
     )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
 
-    parser.add_argument("--lr_alpha", type=float, default=0.55)
+    parser.add_argument("--lr_alpha", type=float, default=0.45)
     parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
     parser.add_argument("--embed_lr_alpha", type=float, default=1.0)
     parser.add_argument("--resid_lambda_alpha", type=float, default=1.0)

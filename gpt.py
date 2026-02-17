@@ -176,8 +176,6 @@ class CausalSelfAttention(nn.Module):
         else:
             raise ValueError(f"Unknown attn_type: {config.attn_type}")
 
-        # set kv heads
-        self.n_kv_head = config.n_kv_head
         # set head dim
         self.head_dim = config.n_emb // config.n_head
 

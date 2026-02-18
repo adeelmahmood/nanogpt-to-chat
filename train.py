@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument("--logit_softcap", type=float, default=None)
 
     parser.add_argument(
-        "--pos_emb_type", type=str, choices=["rope", "absolute", "none"], default=None
+        "--pos_emb_type", type=str, choices=["rope", "absolute", "none"], default="rope"
     )
     parser.add_argument("--use_rmsnorm", type=str2bool, default=True)
     parser.add_argument("--use_qk_norm", type=str2bool, default=True)
@@ -458,6 +458,8 @@ def main():
             wandb_run.log(
                 {
                     "train/loss": loss_accum.item(),
+                    "train/grad_norm": grad_norm.item(),
+                    "train/update_ratio_matrix": matrix_update_ratio.item(),
                     **lr_logs,
                     "perf/tok_per_sec": tok_sec,
                     "progress/total_time": total_time,

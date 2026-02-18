@@ -77,10 +77,10 @@ get_variants() {
             echo "resid_lambda_alpha_1.0:lr_alpha=0.45,matrix_lr_alpha=0.16,resid_lambda_alpha=1.0,max_tokens=100000000"
             echo "resid_lambda_alpha_1.5:lr_alpha=0.45,matrix_lr_alpha=0.16,resid_lambda_alpha=1.5,max_tokens=100000000"
             ;;
-        "endtoend")
-            echo "improved:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
-            echo "current:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true"
-            echo "baseline:pos_emb_type=absolute,use_rmsnorm=false,use_qk_norm=false,attn_type=mqa,use_kv_cache=false"
+        "lrs_final")
+            echo "over:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true,lr_alpha=0.45,matrix_lr_alpha=0.16,embed_lr_alpha=1.0,resid_lambda_alpha=1.0,logit_softcap=15.0,max_tokens=500000000"
+            echo "base:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true,lr_alpha=1.0,matrix_lr_alpha=1.0,embed_lr_alpha=1.0,resid_lambda_alpha=1.0,logit_softcap=15.0,max_tokens=500000000"
+            echo "under:pos_emb_type=absolute,use_rmsnorm=false,use_qk_norm=false,attn_type=mqa,use_kv_cache=false,lr_alpha=1.0,matrix_lr_alpha=1.0,embed_lr_alpha=1.0,resid_lambda_alpha=1.0,logit_softcap=0.0,max_tokens=500000000"
             ;;
         *)
             echo "ERROR: Unknown experiment '$experiment_name'" >&2

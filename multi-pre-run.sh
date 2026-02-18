@@ -17,6 +17,39 @@ export RUN_ID="$RUN_ID"
 RUN_DIR="runs/${RUN_ID}"
 mkdir -p "$RUN_DIR"
 
+
+############################################
+# CLEANUP HANDLING
+############################################
+
+cleanup() {
+  echo
+  echo "Interrupt received. Cleaning up..."
+
+  # Allow second Ctrl-C to immediately terminate
+  trap - SIGINT
+
+  # Stop background sync loop if running
+  if [[ -n "${SYNC_PID:-}" ]]; then
+    kill "$SYNC_PID" 2>/dev/null || true
+  fi
+
+  # Final checkpoint sync
+  if [[ -n "${BUCKET:-}" ]]; then
+    echo "Syncing checkpoints to S3 before exit..."
+    aws s3 sync "${RUN_DIR}/checkpoints/" \
+      "s3://$BUCKET/${RUN_DIR}/checkpoints/" \
+      --exclude "*.tmp" \
+      --only-show-errors || true
+  fi
+
+  echo "Cleanup done."
+  exit 130
+}
+
+trap cleanup SIGINT SIGTERM
+
+
 ############################################
 # DATASET SETUP
 ############################################
@@ -83,7 +116,6 @@ if [[ -n "${BUCKET:-}" ]]; then
     done
   ) &
   SYNC_PID=$!
-  trap "kill $SYNC_PID 2>/dev/null || true" EXIT
 fi
 
 ############################################

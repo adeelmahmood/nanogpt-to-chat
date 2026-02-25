@@ -11,13 +11,15 @@ source ./ablation_experiments.sh
 
 EXPERIMENT_NAME="${1:-}"
 MODEL_DEPTH="${2:-d12}"  # Default to d12 if not specified
+STAGE="${3:-train}"  # Default to train if not specified
 EXPERIMENT_DATE="$(date +%m-%d)"
 
 if [[ -z "$EXPERIMENT_NAME" ]]; then
     echo "❌ Error: No experiment specified"
     echo
-    echo "Usage: $0 <experiment_name> [model_depth]"
+    echo "Usage: $0 <experiment_name> [model_depth] [stage]"
     echo "  model_depth: d12 (default), d20, d2"
+    echo "  stage: train (default), mid_train, sft_train"
     echo
     list_experiments
     exit 1
@@ -80,6 +82,12 @@ else  # d12
     BATCH_SIZE=8
     DEVICE_BATCH_SIZE=32768
     MAX_STEPS=4000
+fi
+
+# for mid stage, we need a resume checkpoint from the base variant
+if [[ "$STAGE" == "mid_train" ]]; then
+    RESUME_CKPT="runs/131/pretrain_fw_d20_15000.pt"
+    echo "Mid-training stage - will resume from base variant checkpoint: ${RESUME_CKPT}"
 fi
 
 TOTAL_BATCH_SIZE=$((DEVICE_BATCH_SIZE * NPROC_PER_NODE))
@@ -148,9 +156,9 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
     
     # Build training command directly
     TRAIN_CMD=(
-        "${PYTHON_CMD[@]}" train.py
+        "${PYTHON_CMD[@]}" ${STAGE}.py
         --dataset "$DATASET"
-        --dataset_dir "$DATASET_DIR"
+        $([ "$STAGE" == "train" ] && echo "--dataset_dir \"$DATASET_DIR\"")
         --model_depth "$MODEL_DEPTH"
         --batch_size "$BATCH_SIZE"
         --total_batch_size "$TOTAL_BATCH_SIZE"
@@ -159,6 +167,7 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
         --ckpt_out "${VARIANT_RUN_DIR}/checkpoints"
         --log_dir "$VARIANT_RUN_DIR"
         --log_file "train.jsonl"
+        $([ "$STAGE" == "mid_train" ] && echo "--resume_ckpt ${RESUME_CKPT}")
     )
     
     # Add variant-specific parameters (this may update VARIANT_MAX_STEPS)

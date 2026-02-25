@@ -4,6 +4,7 @@ from datetime import datetime
 import math
 from dataloader_midtrain_bos import midtraining_loader_bos
 from gpt import GPTModel, configure_optimizer, get_gpt_config
+from logger import MetricLogger
 from sft_train import parse_args
 from tasks import GSM8K, MMLU, Arc, SmolTalkTask, SpellingTask, TaskMixture
 import torch
@@ -53,7 +54,12 @@ def parse_args():
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
+    # logging
+    parser.add_argument("--log_dir", type=str, default=None)
+    parser.add_argument("--log_file", type=str, default=None)
+
     # architecture params (for ablation experiments)
+    parser.add_argument("--block_size", type=int, default=None)
     parser.add_argument("--init_lr_frac", type=float, default=1.0)
 
     return parser.parse_args()
@@ -61,6 +67,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    logger = MetricLogger(args.log_dir, file_name=args.log_file)
 
     # env setup
     (
@@ -101,7 +109,12 @@ def main():
     tokenizer = tiktoken.get_encoding("gpt2")
 
     # initialize the model
-    config = get_gpt_config(args.model_depth)
+    config = get_gpt_config(args.model_depth, args=args)
+    if master_process:
+        print("\n======== MODEL CONFIG ========")
+        for k in sorted(vars(config).keys()):
+            print(f"{k}: {getattr(config, k)}")
+        print("============================\n")
 
     # Initialize the model
     model = GPTModel(config).to(device)
@@ -323,9 +336,20 @@ def main():
         tok_sec = (B * T * gradient_accum_steps * ddp_world_size) / (et - st)
         total_time += et - st
         total_tokens += B * T * gradient_accum_steps * ddp_world_size
-        print0(
-            f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | total tokens: {total_tokens:,}"
-        )
+
+        # logging
+        if master_process:
+            print0(
+                f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | total tokens: {total_tokens:,}"
+            )
+            logger.log(
+                step=step,
+                train_loss=loss_accum.item(),
+                lr_matrix=lr_logs["lr/matrix"],
+                tok_per_sec=tok_sec,
+                total_time=total_time,
+                total_tokens=total_tokens,
+            )
 
         if master_process and send_to_wandb:
             wandb_run.log(

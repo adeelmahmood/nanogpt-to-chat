@@ -82,6 +82,11 @@ get_variants() {
             echo "base:pos_emb_type=rope,use_rmsnorm=true,use_qk_norm=true,attn_type=mha,use_kv_cache=true,lr_alpha=1.0,matrix_lr_alpha=1.0,embed_lr_alpha=1.0,resid_lambda_alpha=1.0,logit_softcap=15.0,max_tokens=500000000"
             echo "under:pos_emb_type=absolute,use_rmsnorm=false,use_qk_norm=false,attn_type=mqa,use_kv_cache=false,lr_alpha=1.0,matrix_lr_alpha=1.0,embed_lr_alpha=1.0,resid_lambda_alpha=1.0,logit_softcap=0.0,max_tokens=500000000"
             ;;
+        "mid_init_lr_frac_sweep")
+            echo "mid_init_lr_frac_0.5:init_lr_frac=0.5"
+            echo "mid_init_lr_frac_0.1:init_lr_frac=0.1"
+            echo "mid_init_lr_frac_1.5:init_lr_frac=1.5"
+            ;;
         *)
             echo "ERROR: Unknown experiment '$experiment_name'" >&2
             return 1

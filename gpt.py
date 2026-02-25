@@ -451,7 +451,11 @@ import torch
 
 
 def configure_optimizer(
-    model, total_batch_size_tokens, reference_batch_size_tokens=524_288, stage="pre"
+    model,
+    total_batch_size_tokens,
+    reference_batch_size_tokens=524_288,
+    stage="pre",
+    init_lr_frac=1.0,
 ):
     (
         embed,
@@ -464,16 +468,19 @@ def configure_optimizer(
     # per stage params
     if stage == "mid":
         base_embed_lr = 0.2
-        init_lr_frac = 1.0
         matrix_weight_decay = 0.0
     elif stage == "sft":
         base_embed_lr = 0.2
-        init_lr_frac = 0.02
+        # init_lr_frac = 0.02
         matrix_weight_decay = 0.0
     else:  # pre stage
         base_embed_lr = 0.24
-        init_lr_frac = 1.0
         matrix_weight_decay = 0.01
+
+    if init_lr_frac is not 1.0:
+        print(
+            f">Applying initial LR fraction {init_lr_frac} to all optim groups for stage {stage}"
+        )
 
     # -----------------------------
     # Scaling factors

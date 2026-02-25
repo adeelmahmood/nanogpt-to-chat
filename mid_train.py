@@ -53,6 +53,9 @@ def parse_args():
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
+    # architecture params (for ablation experiments)
+    parser.add_argument("--init_lr_frac", type=float, default=1.0)
+
     return parser.parse_args()
 
 
@@ -123,7 +126,10 @@ def main():
 
     # initiatlize the optimizer
     optimizer = configure_optimizer(
-        model, total_batch_size_tokens=total_batch_size, stage="mid"
+        model,
+        total_batch_size_tokens=total_batch_size,
+        stage="mid",
+        init_lr_frac=args.init_lr_frac,
     )
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")

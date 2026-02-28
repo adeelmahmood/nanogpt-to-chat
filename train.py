@@ -1,6 +1,7 @@
 import argparse
 from contextlib import nullcontext
 from datetime import datetime
+from html import parser
 import math
 from dataloader import DataLoaderLite
 from gpt import (
@@ -89,7 +90,7 @@ def parse_args():
         "--attn_type", type=str, choices=["mha", "gqa", "mqa"], default="mha"
     )
     parser.add_argument("--use_kv_cache", type=str2bool, default=True)
-
+    parser.add_argument("--init_lr_frac", type=float, default=1.0)
     parser.add_argument("--lr_alpha", type=float, default=0.45)
     parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
     parser.add_argument("--embed_lr_alpha", type=float, default=1.0)
@@ -173,29 +174,18 @@ def main():
     model = GPTModel(config).to(device)
 
     # initiatlize the optimizer
-    optimizer = configure_optimizer(model, total_batch_size_tokens=total_batch_size)
+    optimizer = configure_optimizer(
+        model,
+        total_batch_size_tokens=total_batch_size,
+        stage="pre",
+        init_lr_frac=args.init_lr_frac,
+        lr_alpha=args.lr_alpha,
+        matrix_lr_alpha=args.matrix_lr_alpha,
+        embed_lr_alpha=args.embed_lr_alpha,
+        resid_lambda_alpha=args.resid_lambda_alpha,
+    )
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
-        # fixed alpha
-        if args.lr_alpha != 1.0:
-            pg["initial_lr"] *= args.lr_alpha
-            print0(f">Applied lr_alpha={args.lr_alpha}, new ilr={pg['initial_lr']:.6f}")
-        # layer level alpha
-        if args.matrix_lr_alpha != 1.0 and pg.get("name") == "matrix":
-            pg["initial_lr"] *= args.matrix_lr_alpha
-            print0(
-                f">>Applied matrix_lr_alpha={args.matrix_lr_alpha}, new ilr={pg['initial_lr']:.6f}"
-            )
-        if args.embed_lr_alpha != 1.0 and pg.get("name") == "embed":
-            pg["initial_lr"] *= args.embed_lr_alpha
-            print0(
-                f">>Applied embed_lr_alpha={args.embed_lr_alpha}, new ilr={pg['initial_lr']:.6f}"
-            )
-        if args.resid_lambda_alpha != 1.0 and pg.get("name") == "resid_lambda":
-            pg["initial_lr"] *= args.resid_lambda_alpha
-            print0(
-                f">>Applied resid_lambda_alpha={args.resid_lambda_alpha}, new ilr={pg['initial_lr']:.6f}"
-            )
 
     num_params = sum(p.nelement() for p in model.parameters())
     print0(f"\nModel parameters: {num_params/1e6:.2f}M")

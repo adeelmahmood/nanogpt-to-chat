@@ -1,5 +1,5 @@
 from chat import render_conversation
-from tasks import GSM8K, MMLU, Arc, SmolTalkTask, TaskMixture
+from tasks import GSM8K, MMLU, Arc, SmolTalkTask, SpellingTask, TaskMixture
 from transformers import AutoTokenizer
 from tqdm import tqdm
 
@@ -19,10 +19,13 @@ def count_tokens(task, max_samples=None):
 
 train_task = TaskMixture(
     [
-        SmolTalkTask(stop=10_000),
-        MMLU(stop=2_000),
-        GSM8K(stop=2_000),
-        Arc(stop=2_000),
+        SmolTalkTask(),  # 460k
+        MMLU(),  # 100k
+        GSM8K(),  # 8k
+        SpellingTask(size=200_000),  # 200k
     ]
 )
 print(f"Train task token estimate: {count_tokens(train_task):,}")
+
+# midtraining
+# token estimate: 457,865,025

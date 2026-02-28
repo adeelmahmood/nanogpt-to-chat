@@ -75,19 +75,13 @@ fi
 
 # Set training parameters based on model size
 if [[ "$MODEL_DEPTH" == "d20" ]]; then
-    BATCH_SIZE=8
+    BATCH_SIZE=4
     DEVICE_BATCH_SIZE=32768
     MAX_STEPS=2000
 else  # d12
-    BATCH_SIZE=8
+    BATCH_SIZE=4
     DEVICE_BATCH_SIZE=32768
     MAX_STEPS=4000
-fi
-
-# for mid stage, we need a resume checkpoint from the base variant
-if [[ "$STAGE" == "mid_train" ]]; then
-    RESUME_CKPT="runs/131/pretrain_fw_d20_15000.pt"
-    echo "Mid-training stage - will resume from base variant checkpoint: ${RESUME_CKPT}"
 fi
 
 TOTAL_BATCH_SIZE=$((DEVICE_BATCH_SIZE * NPROC_PER_NODE))
@@ -150,15 +144,14 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
         echo
         continue
     fi
-    
+
     # Initialize variant-specific max_steps (default to global MAX_STEPS)
     VARIANT_MAX_STEPS="$MAX_STEPS"
-    
+
     # Build training command directly
     TRAIN_CMD=(
-        "${PYTHON_CMD[@]}" ${STAGE}.py
+        "${PYTHON_CMD[@]}" "${STAGE}.py"
         --dataset "$DATASET"
-        $([ "$STAGE" == "train" ] && echo "--dataset_dir \"$DATASET_DIR\"")
         --model_depth "$MODEL_DEPTH"
         --batch_size "$BATCH_SIZE"
         --total_batch_size "$TOTAL_BATCH_SIZE"
@@ -167,14 +160,22 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
         --ckpt_out "${VARIANT_RUN_DIR}/checkpoints"
         --log_dir "$VARIANT_RUN_DIR"
         --log_file "train.jsonl"
-        $([ "$STAGE" == "mid_train" ] && echo "--resume_ckpt ${RESUME_CKPT}")
     )
+
+    if [[ "$STAGE" == "train" ]]; then
+        TRAIN_CMD+=( --dataset_dir "$DATASET_DIR" )
+    fi
+
+    if [[ "$STAGE" == "mid_train" ]]; then
+        TRAIN_CMD+=( --resume_ckpt "$RESUME_CKPT" )
+    fi
     
     # Add variant-specific parameters (this may update VARIANT_MAX_STEPS)
     add_variant_params "$variant_params"
     
     # Add the final max_steps to command (after potential override)
     TRAIN_CMD+=(--max_steps "$VARIANT_MAX_STEPS")
+
     
     # Display and run the command
     echo "Starting training for ${variant_name}..."

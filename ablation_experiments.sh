@@ -8,6 +8,16 @@
 get_variants() {
     local experiment_name="$1"
     case "$experiment_name" in
+        "test_midtrain_ablation")
+            echo "init_lr_frac_0.5:init_lr_frac=0.5,max_steps=10,resume_ckpt=runs/131/pretrain_fw_d20_15000.pt"
+            echo "init_lr_frac_1.0:init_lr_frac=1.0,max_steps=10,resume_ckpt=runs/131/pretrain_fw_d20_15000.pt"
+            echo "init_lr_frac_1.5:init_lr_frac=1.5,max_steps=10,resume_ckpt=runs/131/pretrain_fw_d20_15000.pt"
+            ;;
+        "test_sfttrain_ablation")
+            echo "init_lr_frac_0.5:init_lr_frac=0.5,max_steps=10"
+            echo "init_lr_frac_1.0:init_lr_frac=1.0,max_steps=10"
+            echo "init_lr_frac_1.5:init_lr_frac=1.5,max_steps=10"
+            ;;
         "positioning")
             echo "none:pos_emb_type=none"
             echo "abs:pos_emb_type=absolute"

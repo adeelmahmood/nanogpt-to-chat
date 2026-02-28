@@ -4,6 +4,7 @@ from datetime import datetime
 import math
 from dataloader_sft import sft_loader
 from gpt import GPTModel, configure_optimizer, get_gpt_config
+from logger import MetricLogger
 from tasks import GSM8K, Arc, SmolTalkTask, SpellingTask, TaskMixture
 import torch
 import time
@@ -48,16 +49,30 @@ def parse_args():
     parser.add_argument("--eval_every", type=int, default=None)
     parser.add_argument("--save_every", type=int, default=None)
 
+    # logging
+    parser.add_argument("--log_dir", type=str, default=None)
+    parser.add_argument("--log_file", type=str, default=None)
+
     # paths
     parser.add_argument("--data_root", type=str, default=None)
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
+
+    # architecture params (for ablation experiments)
+    parser.add_argument("--block_size", type=int, default=None)
+    parser.add_argument("--init_lr_frac", type=float, default=1.0)
+    parser.add_argument("--lr_alpha", type=float, default=0.45)
+    parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
+    parser.add_argument("--embed_lr_alpha", type=float, default=1.0)
+    parser.add_argument("--resid_lambda_alpha", type=float, default=1.0)
 
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    logger = MetricLogger(args.log_dir, file_name=args.log_file)
 
     # env setup
     (
@@ -114,7 +129,14 @@ def main():
 
     # initiatlize the optimizer
     optimizer = configure_optimizer(
-        model, total_batch_size_tokens=args.total_batch_size, stage="sft"
+        model,
+        total_batch_size_tokens=args.total_batch_size,
+        stage="sft",
+        init_lr_frac=args.init_lr_frac,
+        lr_alpha=args.lr_alpha,
+        matrix_lr_alpha=args.matrix_lr_alpha,
+        embed_lr_alpha=args.embed_lr_alpha,
+        resid_lambda_alpha=args.resid_lambda_alpha,
     )
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")
@@ -285,9 +307,18 @@ def main():
         total_examples += B * gradient_accum_steps * ddp_world_size
         num_tokens_item = num_tokens.item()
         step_loss = loss_accum.item()
-        print0(
-            f"step: {step:05d}/{max_steps:05d} | step loss: {step_loss:.4f} | time: {(et-st)*1000:.2f}ms | examples/sec: {examples_per_sec:.2f} | total examples: {total_examples:,} | num_tokens: {num_tokens_item:,}"
-        )
+
+        # logging
+        if master_process:
+            print0(
+                f"step: {step:05d}/{max_steps:05d} | step loss: {step_loss:.4f} | time: {(et-st)*1000:.2f}ms | examples/sec: {examples_per_sec:.2f} | total examples: {total_examples:,} | num_tokens: {num_tokens_item:,}"
+            )
+            logger.log(
+                step=step,
+                train_loss=loss_accum.item(),
+                lr_matrix=lr_logs["lr/matrix"],
+            )
+
         if master_process and send_to_wandb:
             wandb_run.log(
                 {

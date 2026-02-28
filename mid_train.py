@@ -61,6 +61,10 @@ def parse_args():
     # architecture params (for ablation experiments)
     parser.add_argument("--block_size", type=int, default=None)
     parser.add_argument("--init_lr_frac", type=float, default=1.0)
+    parser.add_argument("--lr_alpha", type=float, default=0.45)
+    parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
+    parser.add_argument("--embed_lr_alpha", type=float, default=1.0)
+    parser.add_argument("--resid_lambda_alpha", type=float, default=1.0)
 
     return parser.parse_args()
 
@@ -143,6 +147,10 @@ def main():
         total_batch_size_tokens=total_batch_size,
         stage="mid",
         init_lr_frac=args.init_lr_frac,
+        lr_alpha=args.lr_alpha,
+        matrix_lr_alpha=args.matrix_lr_alpha,
+        embed_lr_alpha=args.embed_lr_alpha,
+        resid_lambda_alpha=args.resid_lambda_alpha,
     )
     for pg in optimizer.param_groups:
         print0(f"{pg['name']}: lr={pg['lr']:.6f}, weight_decay={pg['weight_decay']}")

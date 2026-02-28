@@ -1,10 +1,17 @@
 import math
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tiktoken
 
 from dataclasses import dataclass
+
+
+def print0(s="", **kwargs):
+    ddp_rank = int(os.environ.get("RANK", 0))
+    if ddp_rank == 0:
+        print(s, **kwargs)
 
 
 @dataclass
@@ -456,6 +463,10 @@ def configure_optimizer(
     reference_batch_size_tokens=524_288,
     stage="pre",
     init_lr_frac=1.0,
+    lr_alpha=1.0,
+    matrix_lr_alpha=1.0,
+    embed_lr_alpha=1.0,
+    resid_lambda_alpha=1.0,
 ):
     (
         embed,
@@ -477,10 +488,14 @@ def configure_optimizer(
         base_embed_lr = 0.24
         matrix_weight_decay = 0.01
 
-    if init_lr_frac is not 1.0:
-        print(
-            f">Applying initial LR fraction {init_lr_frac} to all optim groups for stage {stage}"
-        )
+    print0(f"-- Optimizer configuration for stage {stage} --")
+    print0(f"Init LR fraction: {init_lr_frac}")
+    print0(f"LR alpha: {lr_alpha}")
+    print0(f"Matrix LR alpha: {matrix_lr_alpha}")
+    print0(f"Embed LR alpha: {embed_lr_alpha}")
+    print0(f"Resid lambda LR alpha: {resid_lambda_alpha}")
+    print0(f"Matrix weight decay: {matrix_weight_decay}")
+    print0("---------------------------------------\n")
 
     # -----------------------------
     # Scaling factors
@@ -506,6 +521,13 @@ def configure_optimizer(
 
     scalar_lr = 5e-4 * init_lr_frac  # LayerNorm / bias
     resid_lr = 0.004 * init_lr_frac
+
+    # apply lr scaling (overridden params)
+    embed_lr *= lr_alpha * embed_lr_alpha
+    lm_lr *= lr_alpha
+    matrix_lr *= lr_alpha * matrix_lr_alpha
+    resid_lr *= lr_alpha * resid_lambda_alpha
+    scalar_lr *= lr_alpha
 
     optim_groups = [
         {

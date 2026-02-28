@@ -13,7 +13,10 @@ else
   exit 1
 fi
 
-RUN_ID="$(date +%-m-%-d)_${DATASET}_${MODEL_DEPTH}"
+# Generate RUN_ID if not provided
+if [[ -z "${RUN_ID:-}" ]]; then
+  RUN_ID="$(date +%-m-%-d)_${DATASET}_${MODEL_DEPTH}"
+fi
 export RUN_ID="$RUN_ID"
 
 RUN_DIR="runs/${RUN_ID}"

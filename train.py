@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument("--log_dir", type=str, default=None)
     parser.add_argument("--log_file", type=str, default=None)
 
-    # architecture params (for ablation experiments)
+    # architecture params
     # (keeping None as default will use config defaults based on model depth)
     parser.add_argument("--block_size", type=int, default=None)
     # parser.add_argument("--vocab_size", type=int, default=50304)

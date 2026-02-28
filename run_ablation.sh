@@ -165,10 +165,6 @@ for variant_spec in "${VARIANT_SPECS[@]}"; do
     if [[ "$STAGE" == "train" ]]; then
         TRAIN_CMD+=( --dataset_dir "$DATASET_DIR" )
     fi
-
-    if [[ "$STAGE" == "mid_train" ]]; then
-        TRAIN_CMD+=( --resume_ckpt "$RESUME_CKPT" )
-    fi
     
     # Add variant-specific parameters (this may update VARIANT_MAX_STEPS)
     add_variant_params "$variant_params"

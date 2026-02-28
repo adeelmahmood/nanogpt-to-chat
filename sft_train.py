@@ -58,9 +58,9 @@ def parse_args():
     parser.add_argument("--ckpt_out", type=str, default="./ckps")
     parser.add_argument("--resume_ckpt", type=str, default=None)
 
-    # architecture params (for ablation experiments)
+    # architecture params
     parser.add_argument("--block_size", type=int, default=None)
-    parser.add_argument("--init_lr_frac", type=float, default=1.0)
+    parser.add_argument("--init_lr_frac", type=float, default=1.0)  # 0.02
     parser.add_argument("--lr_alpha", type=float, default=0.45)
     parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
     parser.add_argument("--embed_lr_alpha", type=float, default=1.0)

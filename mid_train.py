@@ -60,7 +60,7 @@ def parse_args():
 
     # architecture params
     parser.add_argument("--block_size", type=int, default=None)
-    parser.add_argument("--init_lr_frac", type=float, default=1.0)  # 0.35
+    parser.add_argument("--init_lr_frac", type=float, default=1.0)
     parser.add_argument("--lr_alpha", type=float, default=0.45)
     parser.add_argument("--matrix_lr_alpha", type=float, default=0.16)
     parser.add_argument("--embed_lr_alpha", type=float, default=1.0)

@@ -53,7 +53,7 @@ def parse_args():
 
     # batch
     parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=16)
-    parser.add_argument("--total_batch_size", type=int, default=524288)
+    parser.add_argument("--total_batch_size", type=int, default=4096)  # 524288
     parser.add_argument("--compile_model", type=bool, default=False)
 
     # training
@@ -104,6 +104,9 @@ def main():
     args = parse_args()
 
     logger = MetricLogger(args.log_dir, file_name=args.log_file)
+
+    running_in_auto_mode = int(os.environ.get("RUNNING_IN_AUTO_MODE", -1)) != -1
+    print0(f"Running in auto mode: {running_in_auto_mode}")
 
     # env setup
     (
@@ -156,7 +159,7 @@ def main():
         print("============================\n")
 
     # Hyper parameters
-    max_steps = args.max_steps  # 19073 # 10B / 524288
+    max_steps = args.max_steps or 19073  # 19073 # 10B / 524288
     warmup_steps = int(0.01 * max_steps)  # 1% of max steps
 
     B = args.batch_size
@@ -430,7 +433,7 @@ def main():
         # logging
         if master_process:
             print0(
-                f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time/60:.2f}m | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}"
+                f"step: {step:05d}/{max_steps:05d} | loss: {loss_accum.item():.4f} | matrix lr {matrix_lr:.4e} | time: {(et-st)*1000:.2f}ms | tok-sec: {tok_sec:.2f} | total time: {total_time:.2f}s | eta: {eta_seconds/60:.1f}m | total tokens: {total_tokens:,}"
             )
             logger.log(
                 step=step,
@@ -457,6 +460,13 @@ def main():
                 },
                 step=step,
             )
+
+        # kill after 1 min
+        if running_in_auto_mode and total_time > 10:
+            print0("Total time exceeded 1 minute, ending training")
+            # print final train loss
+            print0(f"Final train loss: {loss_accum.item():.4f}")
+            break
 
     print0(f"Training completed {datetime.now()}")
 

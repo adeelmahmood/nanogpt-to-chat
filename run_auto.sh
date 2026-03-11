@@ -2,13 +2,15 @@
 set -e
 
 # CONSTANT 
-DATASET=ts
+DATASET=fw
 MODEL_DEPTH=d12
 BATCH_SIZE=4
+TOTAL_BATCH_SIZE=32768
 SAVE_EVERY=-1
 EVAL_EVERY=-1
 
 export RUNNING_IN_AUTO_MODE=1
+export AUTO_MODE_TIME_LIMIT=300  # 5 mins
 
 # Generate RUN_ID if not provided
 if [[ -z "${RUN_ID:-}" ]]; then
@@ -77,6 +79,7 @@ PRETRAIN_CMD=("${PYTHON_CMD[@]}" train.py
   --batch_size "$BATCH_SIZE" 
   --save_every "$SAVE_EVERY"
   --eval_every "$EVAL_EVERY"
+  --total_batch_size "$TOTAL_BATCH_SIZE"
   )
 echo "Command: ${PRETRAIN_CMD[*]}"
 "${PRETRAIN_CMD[@]}"

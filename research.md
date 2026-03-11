@@ -23,7 +23,7 @@ Once you get confirmation, kick off the experimentation.
 
 ## Experimentation
 
-Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 1 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `bash run_auto.sh`.
+Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `bash run_auto.sh`.
 
 **What you CAN do:**
 
@@ -36,7 +36,7 @@ Each experiment runs on a single GPU. The training script runs for a **fixed tim
 - Install new packages or add dependencies. You can only use what's already in `requirements.txt`.
 - Modify the evaluation harness.
 
-**The goal is simple: get the lowest training loss.** Since the time budget is fixed, you don't need to worry about training time — it's always 1 minutes. Everything is fair game: change the architecture, the optimizer, the hyperparameters, the batch size, the model size. The only constraint is that the code runs without crashing and finishes within the time budget.
+**The goal is simple: get the lowest training loss.** Since the time budget is fixed, you don't need to worry about training time — it's always 5 minutes. Everything is fair game: change the architecture, the optimizer, the hyperparameters, the batch size, the model size. The only constraint is that the code runs without crashing and finishes within the time budget.
 
 **Simplicity criterion**: All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. Conversely, removing something and getting equal or better results is a great outcome — that's a simplification win. When evaluating whether to keep a change, weigh the complexity cost against the improvement magnitude. A 0.001 training loss improvement that adds 20 lines of hacky code? Probably not worth it. A 0.001 training loss improvement from deleting code? Definitely keep. An improvement of ~0 but much simpler code? Keep.
 
@@ -48,12 +48,12 @@ Once the script finishes it prints a summary like this:
 
 ```
 ---
-Total time exceeded 1 minute, ending training
+Total time exceeded 5 minute, ending training
 Final train loss: 10.7820
 Training completed 2026-03-10 21:49:27.297662
 ```
 
-Note that the script is configured to always stop after 1 minutes, so depending on the computing platform of this computer the numbers might look different. You can extract the key metric from the log file:
+Note that the script is configured to always stop after 5 minutes, so depending on the computing platform of this computer the numbers might look different. You can extract the key metric from the log file:
 
 ```
 grep "^Final train loss:" run.log
@@ -102,7 +102,7 @@ LOOP FOREVER:
 
 The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
 
-**Timeout**: Each experiment should take ~1 minutes total (+ a few seconds for startup and eval overhead). If a run exceeds 10 minutes, kill it and treat it as a failure (discard and revert).
+**Timeout**: Each experiment should take ~5 minutes total (+ a few seconds for startup and eval overhead). If a run exceeds 10 minutes, kill it and treat it as a failure (discard and revert).
 
 **Crashes**: If a run crashes (OOM, or a bug, or etc.), use your judgment: If it's something dumb and easy to fix (e.g. a typo, a missing import), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the tsv, and move on.
 

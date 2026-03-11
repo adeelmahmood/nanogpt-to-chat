@@ -53,7 +53,7 @@ def parse_args():
 
     # batch
     parser.add_argument("--batch_size", type=int, choices=[4, 8, 16, 32], default=16)
-    parser.add_argument("--total_batch_size", type=int, default=4096)  # 524288
+    parser.add_argument("--total_batch_size", type=int, default=524288)
     parser.add_argument("--compile_model", type=bool, default=False)
 
     # training
@@ -106,7 +106,10 @@ def main():
     logger = MetricLogger(args.log_dir, file_name=args.log_file)
 
     running_in_auto_mode = int(os.environ.get("RUNNING_IN_AUTO_MODE", -1)) != -1
-    print0(f"Running in auto mode: {running_in_auto_mode}")
+    auto_mode_time_limit = int(os.environ.get("AUTO_MODE_TIME_LIMIT", -1))
+    print0(
+        f"Running in auto mode: {running_in_auto_mode} with time limit: {auto_mode_time_limit} seconds"
+    )
 
     # env setup
     (
@@ -461,9 +464,11 @@ def main():
                 step=step,
             )
 
-        # kill after 1 min
-        if running_in_auto_mode and total_time > 10:
-            print0("---\nTotal time exceeded 1 minute, ending training")
+        # kill after auto mode time limit
+        if running_in_auto_mode and total_time > auto_mode_time_limit:
+            print0(
+                f"---\nTotal time exceeded {auto_mode_time_limit} seconds, ending training"
+            )
             # print final train loss
             print0(f"Final train loss: {loss_accum.item():.4f}")
             break

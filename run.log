@@ -1,0 +1,74 @@
+
+Running pretraining...
+Command: python train.py --dataset ts --dataset_dir download/tinystories --model_depth d12 --batch_size 4 --save_every -1 --eval_every -1
+Running in auto mode: True
+using device: mps type cpu
+
+======== MODEL CONFIG ========
+attn_type: mha
+block_size: 1024
+logit_softcap: 15.0
+n_emb: 768
+n_head: 6
+n_kv_head: 6
+n_layer: 12
+pos_emb_type: rope
+use_kv_cache: True
+use_qk_norm: True
+use_rmsnorm: True
+vocab_size: 50304
+============================
+
+-- Optimizer configuration for stage pre --
+Init LR fraction: 1.0
+LR alpha: 0.45
+Matrix LR alpha: 0.16
+Embed LR alpha: 1.0
+Resid lambda LR alpha: 1.0
+Matrix weight decay: 0.01
+---------------------------------------
+
+embed: lr=0.009546, weight_decay=0.0
+lm_head: lr=0.000127, weight_decay=0.0
+matrix: lr=0.000095, weight_decay=0.01
+resid_lambda: lr=0.001800, weight_decay=0.0
+scalar: lr=0.000225, weight_decay=0.0
+
+Model parameters: 162.26M
+B = 4, T = 1024
+Using gradient accum steps: 1
+Total batch size: 4096
+Dataset folder: download/tinystories
+Target training tokens: 78,123,008
+Tokens to params ration: 0.48
+Based on ~20 T-to-P ratio, the steps should be 792270.06
+found 4 shards for download/tinystories in train split
+found 1 shards for download/tinystories in val split
+
+======== RUN CONFIG ========
+dataset        : ts
+dataset_dir    : download/tinystories
+model_depth    : d12
+batch_size     : 4
+block_size     : 1024
+max_steps      : 19073
+eval_every     : -1
+save_every     : -1
+============================
+
+
+Starting Training (2026-03-10 21:59:45.234997)
+step: 00000/19073 | loss: 10.8260 | matrix lr 5.0242e-07 | time: 1160.38ms | tok-sec: 3529.88 | total time: 1.16s | eta: 368.8m | total tokens: 4,096
+step: 00001/19073 | loss: 10.8253 | matrix lr 1.0048e-06 | time: 1246.49ms | tok-sec: 3286.03 | total time: 2.41s | eta: 382.5m | total tokens: 8,192
+step: 00002/19073 | loss: 10.8230 | matrix lr 1.5073e-06 | time: 1024.42ms | tok-sec: 3998.38 | total time: 3.43s | eta: 363.5m | total tokens: 12,288
+step: 00003/19073 | loss: 10.8198 | matrix lr 2.0097e-06 | time: 1011.47ms | tok-sec: 4049.56 | total time: 4.44s | eta: 353.0m | total tokens: 16,384
+step: 00004/19073 | loss: 10.8141 | matrix lr 2.5121e-06 | time: 999.93ms | tok-sec: 4096.27 | total time: 5.44s | eta: 345.9m | total tokens: 20,480
+step: 00005/19073 | loss: 10.8077 | matrix lr 3.0145e-06 | time: 999.49ms | tok-sec: 4098.11 | total time: 6.44s | eta: 341.2m | total tokens: 24,576
+step: 00006/19073 | loss: 10.8008 | matrix lr 3.5169e-06 | time: 1014.05ms | tok-sec: 4039.25 | total time: 7.46s | eta: 338.5m | total tokens: 28,672
+step: 00007/19073 | loss: 10.7935 | matrix lr 4.0193e-06 | time: 1026.10ms | tok-sec: 3991.83 | total time: 8.48s | eta: 336.9m | total tokens: 32,768
+step: 00008/19073 | loss: 10.7857 | matrix lr 4.5218e-06 | time: 1001.00ms | tok-sec: 4091.92 | total time: 9.48s | eta: 334.8m | total tokens: 36,864
+step: 00009/19073 | loss: 10.7820 | matrix lr 5.0242e-06 | time: 1002.27ms | tok-sec: 4086.71 | total time: 10.49s | eta: 333.1m | total tokens: 40,960
+---
+Total time exceeded 1 minute, ending training
+Final train loss: 10.7820
+Training completed 2026-03-10 21:59:56.279026

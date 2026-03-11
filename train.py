@@ -463,7 +463,7 @@ def main():
 
         # kill after 1 min
         if running_in_auto_mode and total_time > 10:
-            print0("Total time exceeded 1 minute, ending training")
+            print0("---\nTotal time exceeded 1 minute, ending training")
             # print final train loss
             print0(f"Final train loss: {loss_accum.item():.4f}")
             break
